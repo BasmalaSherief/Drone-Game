@@ -3,7 +3,6 @@
 A real-time, terminal-based 2D drone simulation built in C for Linux.
 
 ![Game Screenshot](screenshot.png)
-*(Replace this `screenshot.png` with an actual image of your running game)*
 
 ## 📋 Overview
 
@@ -28,22 +27,22 @@ The system relies on a "Blackboard" pattern where a central server holds the abs
 graph TD
     %% Define Nodes
     subgraph "Terminal Window 1 (Input UI)"
-        KB[Keyboard Manager\nInputs & Telemetry Display]
+        KB["Keyboard Manager\nInputs & Telemetry Display"]
     end
 
     subgraph "Background Process"
-        DC[Drone Controller\nPhysics Engine & Repulsion]
+        DC["Drone Controller\nPhysics Engine & Repulsion"]
     end
 
     subgraph "Terminal Window 2 (Map UI)"
-        BB[Blackboard Server\nGame State, Logic, Map Display]
+        BB["Blackboard Server\nGame State, Logic, Map Display"]
     end
 
-    %% Define Pipes (Edges)
-    KB -->|fifoKD\n(Arrows/WASD forces, Commands)| DC
-    DC -->|fifoDBB\n(Drone Position/Velocity state)| BB
-    BB -->|fifoBBD\n(Active Obstacles Array)| DC
-    BB -->|fifoBBDIS\n(Full World State)| KB
+    %% Define Pipes (Edges) - QUOTES ADDED HERE
+    KB -->|"fifoKD\n(Arrows/WASD forces, Commands)"| DC
+    DC -->|"fifoDBB\n(Drone Position/Velocity state)"| BB
+    BB -->|"fifoBBD\n(Active Obstacles Array)"| DC
+    BB -->|"fifoBBDIS\n(Full World State)"| KB
 
     %% Styling for clarity
     classDef process fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:black;
