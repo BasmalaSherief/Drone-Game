@@ -1,0 +1,214 @@
+#include <ncurses.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h> 
+#include <sys/types.h> 
+#include <string.h> 
+#include "../common.h"
+
+// Draws the 3x3 control grid and highlights the active key
+void draw_input_display(WINDOW *win, int last_ch) 
+{
+    box(win, 0, 0);
+    mvwprintw(win, 0, 1, " INPUT CONTROLS ");
+    
+    // Instructional text
+    mvwprintw(win, 2, 2, "Use ARROW KEYS to move");
+    mvwprintw(win, 3, 2, "SPACE: Brake | S: Start");
+    mvwprintw(win, 4, 2, "R: Reset     | Q: Quit");
+
+    /*   [ ] [^] [ ]
+         [<] [ ] [>]
+         [ ] [v] [ ] */
+    
+    // Default attribute
+    int attr_up = A_NORMAL;
+    int attr_down = A_NORMAL;
+    int attr_left = A_NORMAL;
+    int attr_right = A_NORMAL;
+    int attr_brake = A_NORMAL;
+    int attr_q = A_NORMAL;
+
+    // Highlight based on key press
+    if (last_ch == KEY_UP)    attr_up = A_REVERSE;
+    if (last_ch == KEY_DOWN)  attr_down = A_REVERSE;
+    if (last_ch == KEY_LEFT)  attr_left = A_REVERSE;
+    if (last_ch == KEY_RIGHT) attr_right = A_REVERSE;
+    if (last_ch == ' ')       attr_brake = A_REVERSE;
+    if (last_ch == 'q')       attr_q = A_REVERSE;
+
+    // Draw the Virtual Keypad
+    // UP
+    wattron(win, attr_up);
+    mvwprintw(win, 8, 12, "[ ^ ]");
+    wattroff(win, attr_up);
+
+    // LEFT
+    wattron(win, attr_left);
+    mvwprintw(win, 10, 6, "[ < ]");
+    wattroff(win, attr_left);
+
+    // BRAKE
+    wattron(win, attr_brake);
+    mvwprintw(win, 10, 12, "[BRK]");
+    wattroff(win, attr_brake);
+
+    // RIGHT
+    wattron(win, attr_right);
+    mvwprintw(win, 10, 18, "[ > ]");
+    wattroff(win, attr_right);
+
+    // DOWN
+    wattron(win, attr_down);
+    mvwprintw(win, 12, 12, "[ v ]");
+    wattroff(win, attr_down);
+    
+    // QUIT BUTTON
+    wattron(win, attr_q);
+    mvwprintw(win, 16, 12, "[ Q ]");
+    wattroff(win, attr_q);
+
+    wrefresh(win);
+}
+
+// Displays the Physics Data received from Blackboard
+void draw_dynamics_display(WINDOW *win, WorldState *state) 
+{
+    box(win, 0, 0);
+    mvwprintw(win, 0, 1, " TELEMETRY ");
+
+    // Position
+    mvwprintw(win, 3, 2, "POSITION (m):");
+    mvwprintw(win, 4, 4, "X: %8.3f", state->drone.x);
+    mvwprintw(win, 5, 4, "Y: %8.3f", state->drone.y);
+
+    // Velocity
+    mvwprintw(win, 7, 2, "VELOCITY (m/s):");
+    mvwprintw(win, 8, 4, "Vx: %8.3f", state->drone.vx);
+    mvwprintw(win, 9, 4, "Vy: %8.3f", state->drone.vy);
+
+    // Forces
+    mvwprintw(win, 11, 2, "TOTAL FORCES (N):");
+    mvwprintw(win, 12, 4, "Fx: %8.3f", state->drone.force_x);
+    mvwprintw(win, 13, 4, "Fy: %8.3f", state->drone.force_y);
+
+    // Game Status
+    mvwprintw(win, 15, 2, "STATUS:");
+    if (state->game_active) 
+    {
+        wattron(win, A_BOLD);
+        mvwprintw(win, 16, 4, "[ ACTIVE ]");
+        wattroff(win, A_BOLD);
+    } 
+    else 
+    {
+        mvwprintw(win, 16, 4, "[ PAUSED ]");
+    }
+
+    mvwprintw(win, 18, 2, "SCORE: %d", state->score);
+
+    wrefresh(win);
+}
+
+int main() {
+    // PIPE SETUP 
+    const char *fifoKD = "/tmp/fifoKD";       // Write commands to Drone
+    const char *fifoBBDIS = "/tmp/fifoBBDIS"; // Read state from Blackboard
+    
+    mkfifo(fifoKD, 0666);
+    mkfifo(fifoBBDIS, 0666);
+
+    int fd_KD = open(fifoKD, O_WRONLY);  
+    // Non-blocking read for display data so input doesn't lag
+    int fd_BBDIS = open(fifoBBDIS, O_RDONLY | O_NONBLOCK);
+
+    // NCURSES SETUP
+    initscr();
+    cbreak();               // Disable line buffering
+    noecho();               // Don't show typed characters
+    keypad(stdscr, TRUE);   // ENABLE ARROW KEYS 
+    nodelay(stdscr, TRUE);  // Make getch() non-blocking
+    curs_set(0);            // Hide cursor
+
+    // WINDOW SETUP
+    // Split the terminal into two side-by-side windows
+    int height = 24;
+    int width_input = 30;
+    int width_dyn = 40;
+
+    WINDOW *win_input = newwin(height, width_input, 0, 0); 
+    WINDOW *win_dynamics = newwin(height, width_dyn, 0, width_input + 1);
+
+    // Data containers
+    InputMsg msg;
+    WorldState current_state; 
+    
+    // Init state to zero
+    memset(&current_state, 0, sizeof(WorldState));
+
+    // MAIN LOOP
+    while(1) 
+    {
+        int ch;
+        int last_ch = 0;
+        int current_fx = 0, current_fy = 0;
+        char cmd = 0;
+        int key_pressed = 0;
+
+        // INPUT HANDLING
+        while((ch = getch()) != ERR) 
+        {
+            key_pressed = 1;
+            last_ch = ch;
+            
+            // Map ARROWS to Forces 
+            switch(ch) 
+            {
+                case KEY_UP:    current_fy = -1; break;
+                case KEY_DOWN:  current_fy =  1; break;
+                case KEY_LEFT:  current_fx = -1; break;
+                case KEY_RIGHT: current_fx =  1; break;
+                
+                // Map COMMANDS 
+                case 'q': cmd = 'q'; break; 
+                case 's': cmd = 's'; break;
+                case 'r': cmd = 'r'; break;
+                case ' ': cmd = ' '; break; 
+            }
+        }
+
+        // SEND COMMAND TO DRONE 
+        msg.force_x = current_fx;
+        msg.force_y = current_fy;
+        msg.command = cmd;
+        write(fd_KD, &msg, sizeof(msg));
+
+        // If Quit was pressed, exit the loop immediately
+        if(cmd == 'q') break;
+
+        // READ DATA FROM BLACKBOARD
+        // Non-blocking read
+        ssize_t bytes = read(fd_BBDIS, &current_state, sizeof(WorldState));
+
+        // UPDATE DISPLAYS 
+        draw_input_display(win_input, last_ch);
+        
+        // Only update dynamics if we actually have data (or at least draw the initial frame)
+        if (bytes > 0 || current_state.drone.x != 0) 
+        {
+            draw_dynamics_display(win_dynamics, &current_state);
+        }
+
+        // TIMING
+        // 30ms sleep 
+        usleep(30000);
+    }
+
+    // CLEANUP
+    delwin(win_input);
+    delwin(win_dynamics);
+    endwin();
+    close(fd_KD);
+    close(fd_BBDIS);
+    return 0;
+}
