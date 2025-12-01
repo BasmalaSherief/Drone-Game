@@ -110,7 +110,8 @@ void draw_dynamics_display(WINDOW *win, WorldState *state)
     wrefresh(win);
 }
 
-int main() {
+int main() 
+{
     // PIPE SETUP 
     const char *fifoKD = "/tmp/fifoKD";       // Write commands to Drone
     const char *fifoBBDIS = "/tmp/fifoBBDIS"; // Read state from Blackboard
@@ -124,20 +125,18 @@ int main() {
 
     // NCURSES SETUP
     initscr();
-    cbreak();               // Disable line buffering
-    noecho();               // Don't show typed characters
+    cbreak();               
+    noecho();               
     keypad(stdscr, TRUE);   // ENABLE ARROW KEYS 
     nodelay(stdscr, TRUE);  // Make getch() non-blocking
-    curs_set(0);            // Hide cursor
+    curs_set(0);            
 
-    // WINDOW SETUP
-    // Split the terminal into two side-by-side windows
-    int height = 24;
-    int width_input = 30;
-    int width_dyn = 40;
+    // DYNAMIC WINDOW SETUP 
+    int input_win_width = COLS / 2;  
+    int dyn_win_width = COLS - input_win_width; 
 
-    WINDOW *win_input = newwin(height, width_input, 0, 0); 
-    WINDOW *win_dynamics = newwin(height, width_dyn, 0, width_input + 1);
+    WINDOW *win_input = newwin(LINES, input_win_width, 0, 0); 
+    WINDOW *win_dynamics = newwin(LINES, dyn_win_width, 0, input_win_width);
 
     // Data containers
     InputMsg msg;
@@ -155,7 +154,29 @@ int main() {
         char cmd = 0;
         int key_pressed = 0;
 
-        // INPUT HANDLING
+        // CHECK FOR RESIZE
+        // If the user resized the terminal, we need to resize the internal windows
+        if (KEY_RESIZE) 
+        {
+            resize_term(0, 0); // Update ncurses internal structures
+            
+            // Recalculate widths
+            input_win_width = COLS / 2;
+            dyn_win_width = COLS - input_win_width;
+
+            // Resize and Move windows
+            wresize(win_input, LINES, input_win_width);
+            mvwin(win_input, 0, 0);
+            
+            wresize(win_dynamics, LINES, dyn_win_width);
+            mvwin(win_dynamics, 0, input_win_width);
+            
+            // Clear to remove artifacts
+            erase();
+            refresh();
+        }
+
+        // INPUT HANDLING (Buffer Flush)
         while((ch = getch()) != ERR) 
         {
             key_pressed = 1;

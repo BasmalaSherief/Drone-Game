@@ -34,16 +34,30 @@ void init_console() {
 void draw_map(WorldState *world) {
     erase(); 
     
-    // Draw Borders
+    // Draw Borders dynamically based on current window size
     box(stdscr, 0, 0);
     mvprintw(0, 2, " MAP DISPLAY ");
     mvprintw(0, 20, " Score: %d ", world->score);
+    mvprintw(0, 40, " Size: %dx%d ", COLS, LINES); 
+
+    // Scaling Factors
+    // Map internal coordinates (0-80) to Screen coordinates (0-COLS)
+    float scale_x = (float)COLS / MAP_WIDTH;
+    float scale_y = (float)LINES / MAP_HEIGHT;
 
     // Draw Obstacles 
     attron(COLOR_PAIR(COLOR_OBSTACLE));
     for(int i=0; i<MAX_OBSTACLES; i++) {
         if(world->obstacles[i].active) {
-            mvaddch((int)world->obstacles[i].y, (int)world->obstacles[i].x, 'O');
+            int screen_x = (int)(world->obstacles[i].x * scale_x);
+            int screen_y = (int)(world->obstacles[i].y * scale_y);
+            // Bounds check to keep inside box
+            if(screen_x >= COLS-1) screen_x = COLS-2;
+            if(screen_y >= LINES-1) screen_y = LINES-2;
+            if(screen_x < 1) screen_x = 1;
+            if(screen_y < 1) screen_y = 1;
+            
+            mvaddch(screen_y, screen_x, 'O');
         }
     }
     attroff(COLOR_PAIR(COLOR_OBSTACLE));
@@ -52,14 +66,30 @@ void draw_map(WorldState *world) {
     attron(COLOR_PAIR(COLOR_TARGET));
     for(int i=0; i<MAX_TARGETS; i++) {
         if(world->targets[i].active) {
-            mvaddch((int)world->targets[i].y, (int)world->targets[i].x, 'T');
+            int screen_x = (int)(world->targets[i].x * scale_x);
+            int screen_y = (int)(world->targets[i].y * scale_y);
+            
+            if(screen_x >= COLS-1) screen_x = COLS-2;
+            if(screen_y >= LINES-1) screen_y = LINES-2;
+            if(screen_x < 1) screen_x = 1;
+            if(screen_y < 1) screen_y = 1;
+
+            mvaddch(screen_y, screen_x, 'T');
         }
     }
     attroff(COLOR_PAIR(COLOR_TARGET));
 
     // Draw Drone 
     attron(COLOR_PAIR(COLOR_DRONE));
-    mvaddch((int)world->drone.y, (int)world->drone.x, '+');
+    int drone_screen_x = (int)(world->drone.x * scale_x);
+    int drone_screen_y = (int)(world->drone.y * scale_y);
+    
+    if(drone_screen_x >= COLS-1) drone_screen_x = COLS-2;
+    if(drone_screen_y >= LINES-1) drone_screen_y = LINES-2;
+    if(drone_screen_x < 1) drone_screen_x = 1;
+    if(drone_screen_y < 1) drone_screen_y = 1;
+
+    mvaddch(drone_screen_y, drone_screen_x, '+');
     attroff(COLOR_PAIR(COLOR_DRONE));
 
     refresh();
