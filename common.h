@@ -44,4 +44,8 @@ typedef struct {
     int game_active; // 0=Paused, 1=Flying
 } WorldState;
 
+
+// Log function that appends to a file
+void log_msg(const char *process_name, const char *format, ...);
+
 #endif

@@ -7,8 +7,10 @@
 #include <time.h>
 #include <ncurses.h> 
 #include <string.h>
-
+#include <errno.h>
+#include <signal.h>
 #include "../common.h"
+#include "../common.c"
 #include "../TargetGenerator/TargetGenerator.c"
 #include "../ObstaclesGenerator/ObstaclesGenerator.c"
 
@@ -22,6 +24,11 @@
 
 void init_console() {
     initscr();
+    if (initscr() == NULL) 
+    {
+        fprintf(stderr, "Error initializing ncurses for map display.\n");
+        exit(1);
+    }
     cbreak();
     noecho();
     curs_set(0);
@@ -97,6 +104,12 @@ void draw_map(WorldState *world) {
 
 int main() 
 {
+    // REGISTER SIGNALS
+    signal(SIGINT, handle_signal);  // Ctrl+C
+    signal(SIGTERM, handle_signal); // Kill command
+
+    // Logging start of the main process to the log file
+    log_msg("MAIN", "Process started with PID %d", getpid());
     srand(time(NULL));
 
     // DATA INIT 
@@ -114,32 +127,56 @@ int main()
     int targets_spawned_total = 0;
     int targets_collected_total = 0;
 
-    // PIPES 
+    // PIPES + check for their errors
     const char *fifoDBB = "/tmp/fifoDBB";   
     const char *fifoBBD = "/tmp/fifoBBD";   
     const char *fifoBBDIS = "/tmp/fifoBBDIS"; 
 
-    mkfifo(fifoDBB, 0666);
-    mkfifo(fifoBBD, 0666);
-    mkfifo(fifoBBDIS, 0666);
+    if (mkfifo(fifoDBB, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoDBB"); exit(EXIT_FAILURE); }
+    if (mkfifo(fifoBBD, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBD"); exit(EXIT_FAILURE); }
+    if (mkfifo(fifoBBDIS, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBDIS"); exit(EXIT_FAILURE); }
 
     // NCURSES INIT
     init_console();
 
-    // Non-blocking open for pipes
+    // Non-blocking open for pipes 
     int fd_DBB = open(fifoDBB, O_RDONLY | O_NONBLOCK);
+    if (fd_DBB == -1) { endwin(); perror("open read"); exit(1); }
+  
     int fd_BBD = open(fifoBBD, O_WRONLY); 
+    if (fd_BBD == -1) { endwin(); perror("open write BBDIS"); exit(1); }
+
     int fd_BBDIS = open(fifoBBDIS, O_WRONLY);
+    if (fd_BBDIS == -1) { endwin(); perror("open write BBDIS"); exit(1); }
 
     DroneState incoming_drone_state;
 
-    while(1) {
+    while(keep_running) 
+    {
         // READ INPUT 
         ssize_t bytesRead = read(fd_DBB, &incoming_drone_state, sizeof(DroneState));
 
+        if (bytesRead == -1) 
+        {
+            if (errno != EAGAIN) // no data right now
+            { 
+                perror("Server: Error reading from Drone Pipe (fifoDBB)");
+            }
+        } 
+        else if (bytesRead == 0)  // Pipe is closed
+        {
+            // EOF handling: DO NOT EXIT IMMEDIATELY, let loop finish
+            log_msg("SERVER", "Drone disconnected.");
+            keep_running = 0;
+        } 
+
         if (bytesRead > 0) 
         {
-            if (incoming_drone_state.x == -1.0) break;
+            if (incoming_drone_state.x == -1.0)
+            {
+                log_msg("SERVER", "Detected Quit Signal from Drone.");
+                keep_running = 0; // Trigger cleanup
+            } 
 
             if (incoming_drone_state.x == -2.0) 
             {
@@ -161,9 +198,12 @@ int main()
 
                 continue; 
             }
+            else
+            {
+                world.drone = incoming_drone_state;
+                world.game_active = 1;                
+            }
 
-            world.drone = incoming_drone_state;
-            world.game_active = 1; 
         }
 
         // LOGIC 
@@ -176,7 +216,21 @@ int main()
             if (targets_spawned_total < TOTAL_TARGETS_TO_WIN) 
             {
                 int spawned = refresh_targets(world.targets, &world.drone);
-                targets_spawned_total += spawned;
+                
+                // Execute this logic if a NEW target was actually created
+                if (spawned > 0) 
+                {
+                    targets_spawned_total += spawned;
+
+                    // Log the new target position by finding the active one
+                    for(int i=0; i<MAX_TARGETS; i++) {
+                        if (world.targets[i].active) {
+                             // Log the targets
+                             log_msg("SERVER", "Received new target at %d,%d", world.targets[i].x, world.targets[i].y);
+                             break; 
+                        }
+                    }
+                }
             }
 
             // Targets (Collision Logic)
@@ -185,6 +239,7 @@ int main()
             {
                 world.score += points;
                 targets_collected_total += points;
+                log_msg("SERVER", "Target collected. Score: %d", world.score);
             }
 
             // CHECK WIN CONDITION
@@ -196,8 +251,8 @@ int main()
                 mvprintw(MAP_HEIGHT/2 + 1, MAP_WIDTH/2 - 10, "Final Score: %d", world.score);
                 attroff(A_BOLD | COLOR_PAIR(COLOR_TARGET));
                 refresh();
-                sleep(4); 
-                break;   
+                sleep(4);  
+                keep_running = 0;
             }
         }
 
@@ -205,20 +260,52 @@ int main()
         draw_map(&world);
 
         // BROADCAST 
-        write(fd_BBD, world.obstacles, sizeof(world.obstacles));
-        write(fd_BBDIS, &world, sizeof(WorldState));
+        // WRITING OBSTACLES TO DRONE 
+        ssize_t bytesWrittenBBD = write(fd_BBD, world.obstacles, sizeof(world.obstacles));
+        if (bytesWrittenBBD == -1) 
+        {
+            if (errno == EPIPE) 
+            {
+                printf("Server: Drone disconnected. Cannot write obstacles.\n");
+            } 
+            else 
+            {
+                perror("Server: Error writing to Drone Pipe (fifoBBD)");
+            }
+        }
+
+        // WRITING TO KEYBOARD DISPLAY
+        ssize_t bytesWrittenBBDIS = write(fd_BBDIS, &world, sizeof(WorldState));
+        if (bytesWrittenBBDIS == -1) 
+        {
+            if (errno == EPIPE) 
+            {
+                printf("Server: Keyboard/Display disconnected. Cannot update UI.\n");
+            } 
+            else if (errno != EAGAIN) 
+            { 
+                perror("Server: Error writing to Display Pipe (fifoBBDIS)");
+            }
+        }
 
         usleep(30000); 
     }
 
-    // Cleanup
-    endwin();
-    // Force kill other processes
-    system("pkill -f drone"); 
-    system("pkill -f keyboard");
-    
+    // CLEANUP
+    endwin();  
     close(fd_DBB);
     close(fd_BBD);
     close(fd_BBDIS);
+
+    // Unlink pipes so they don't persist
+    unlink(fifoDBB);
+    unlink(fifoBBD);
+    unlink(fifoBBDIS);
+
+    // Final safety net to ensure everything dies
+    system("killall -9 drone keyboard server");
+
+    // Logging end of the main process to the log file
+    log_msg("MAIN", "Clean exit. Bye!");
     return 0;
 }
