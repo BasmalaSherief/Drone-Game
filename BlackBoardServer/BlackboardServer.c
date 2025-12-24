@@ -3,110 +3,46 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <fcntl.h>
 #include <time.h>
 #include <ncurses.h> 
 #include <string.h>
 #include <errno.h>
 #include <signal.h>
+#include "Blackboard.h"
 #include "../common.h"
-#include "../common.c"
-#include "../TargetGenerator/TargetGenerator.c"
-#include "../ObstaclesGenerator/ObstaclesGenerator.c"
+#include "../TargetGenerator/TargetGenerator.h"
+#include "../ObstaclesGenerator/ObstaclesGenerator.h"
 
-// GAME CONFIGURATION
-#define TOTAL_TARGETS_TO_WIN 10
+/*  ASSIGNMENT1 CORRECTION:
+        - fixed the killing through the handle_signal and global flag for cleaning
+        which is found in the drone and keyboard files too 
+        - Added error checking when dealing (making, opening, reading, writing) with pipes
+        and 
+*/
 
-// Ncurses Colors
-#define COLOR_DRONE     1
-#define COLOR_OBSTACLE  2
-#define COLOR_TARGET    3
+// GLOBAL FLAG FOR CLEANUP
+volatile sig_atomic_t keep_running = 1;
 
-void init_console() {
-    initscr();
-    if (initscr() == NULL) 
-    {
-        fprintf(stderr, "Error initializing ncurses for map display.\n");
-        exit(1);
-    }
-    cbreak();
-    noecho();
-    curs_set(0);
-    start_color();
-    init_pair(COLOR_DRONE, COLOR_BLUE, COLOR_BLACK);
-    init_pair(COLOR_OBSTACLE, COLOR_YELLOW, COLOR_BLACK); 
-    init_pair(COLOR_TARGET, COLOR_GREEN, COLOR_BLACK);
-}
+// Global PIDs to track children
+pid_t pid_drone;
+pid_t pid_keyboard;
 
-void draw_map(WorldState *world) {
-    erase(); 
-    
-    // Draw Borders dynamically based on current window size
-    box(stdscr, 0, 0);
-    mvprintw(0, 2, " MAP DISPLAY ");
-    mvprintw(0, 20, " Score: %d ", world->score);
-    mvprintw(0, 40, " Size: %dx%d ", COLS, LINES); 
-
-    // Scaling Factors
-    // Map internal coordinates (0-80) to Screen coordinates (0-COLS)
-    float scale_x = (float)COLS / MAP_WIDTH;
-    float scale_y = (float)LINES / MAP_HEIGHT;
-
-    // Draw Obstacles 
-    attron(COLOR_PAIR(COLOR_OBSTACLE));
-    for(int i=0; i<MAX_OBSTACLES; i++) {
-        if(world->obstacles[i].active) {
-            int screen_x = (int)(world->obstacles[i].x * scale_x);
-            int screen_y = (int)(world->obstacles[i].y * scale_y);
-            // Bounds check to keep inside box
-            if(screen_x >= COLS-1) screen_x = COLS-2;
-            if(screen_y >= LINES-1) screen_y = LINES-2;
-            if(screen_x < 1) screen_x = 1;
-            if(screen_y < 1) screen_y = 1;
-            
-            mvaddch(screen_y, screen_x, 'O');
-        }
-    }
-    attroff(COLOR_PAIR(COLOR_OBSTACLE));
-
-    // Draw Targets 
-    attron(COLOR_PAIR(COLOR_TARGET));
-    for(int i=0; i<MAX_TARGETS; i++) {
-        if(world->targets[i].active) {
-            int screen_x = (int)(world->targets[i].x * scale_x);
-            int screen_y = (int)(world->targets[i].y * scale_y);
-            
-            if(screen_x >= COLS-1) screen_x = COLS-2;
-            if(screen_y >= LINES-1) screen_y = LINES-2;
-            if(screen_x < 1) screen_x = 1;
-            if(screen_y < 1) screen_y = 1;
-
-            mvaddch(screen_y, screen_x, 'T');
-        }
-    }
-    attroff(COLOR_PAIR(COLOR_TARGET));
-
-    // Draw Drone 
-    attron(COLOR_PAIR(COLOR_DRONE));
-    int drone_screen_x = (int)(world->drone.x * scale_x);
-    int drone_screen_y = (int)(world->drone.y * scale_y);
-    
-    if(drone_screen_x >= COLS-1) drone_screen_x = COLS-2;
-    if(drone_screen_y >= LINES-1) drone_screen_y = LINES-2;
-    if(drone_screen_x < 1) drone_screen_x = 1;
-    if(drone_screen_y < 1) drone_screen_y = 1;
-
-    mvaddch(drone_screen_y, drone_screen_x, '+');
-    attroff(COLOR_PAIR(COLOR_DRONE));
-
-    refresh();
+void handle_signal(int sig) 
+{
+    keep_running = 0;
 }
 
 int main() 
 {
+    //Next 3 lines are from Assignment1 fixes
     // REGISTER SIGNALS
     signal(SIGINT, handle_signal);  // Ctrl+C
     signal(SIGTERM, handle_signal); // Kill command
+
+    // Prevent crash or broken pipes
+    signal(SIGPIPE, SIG_IGN);
 
     // Logging start of the main process to the log file
     log_msg("MAIN", "Process started with PID %d", getpid());
@@ -135,6 +71,19 @@ int main()
     if (mkfifo(fifoDBB, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoDBB"); exit(EXIT_FAILURE); }
     if (mkfifo(fifoBBD, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBD"); exit(EXIT_FAILURE); }
     if (mkfifo(fifoBBDIS, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBDIS"); exit(EXIT_FAILURE); }
+
+    // The next code block is from the assigment1 fixes
+    // LAUNCH CHILDREN 
+    // Launch Drone
+    char *arg_list_drone[] = { "./drone", NULL };
+    pid_drone = spawn_process("./drone", arg_list_drone);
+    log_msg("MAIN", "Launched Drone with PID: %d", pid_drone);
+
+    // Launch Keyboard
+    // pass the keyboard executable as an argument (konsole -e ./keyboard)
+    char *arg_list_kb[] = { "konsole", "-e", "./keyboard", NULL };
+    pid_keyboard = spawn_process("konsole", arg_list_kb);
+    log_msg("MAIN", "Launched Keyboard Manager with PID: %d", pid_keyboard);
 
     // NCURSES INIT
     init_console();
@@ -292,7 +241,21 @@ int main()
     }
 
     // CLEANUP
+
+    log_msg("MAIN", "Stopping system...");
+
+    // Kill children using their PIDs
+    if (pid_drone > 0) kill(pid_drone, SIGTERM);
+    if (pid_keyboard > 0) kill(pid_keyboard, SIGTERM);
+    
+    // Wait for them to finish to avoid zombies
+    waitpid(pid_drone, NULL, 0);
+    waitpid(pid_keyboard, NULL, 0);
+
+    // Destroy Ncurses window
     endwin();  
+
+    // Close pipes
     close(fd_DBB);
     close(fd_BBD);
     close(fd_BBDIS);
@@ -302,10 +265,12 @@ int main()
     unlink(fifoBBD);
     unlink(fifoBBDIS);
 
-    // Final safety net to ensure everything dies
-    system("killall -9 drone keyboard server");
+    // Force kill group to ensure terminal windows close
+    system("pkill -f drone");
+    system("pkill -f keyboard");
 
     // Logging end of the main process to the log file
     log_msg("MAIN", "Clean exit. Bye!");
+
     return 0;
 }

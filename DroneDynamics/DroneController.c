@@ -5,10 +5,18 @@
 #include <sys/types.h> 
 #include <fcntl.h>  
 #include <errno.h>
+#include <signal.h>
 #include "DroneController.h"
 #include "../common.h"
-#include "../common.c"
 #include "../ObstaclesGenerator/ObstaclesGenerator.h"
+
+// GLOBAL FLAG FOR CLEANUP
+volatile sig_atomic_t keep_running = 1;
+
+void handle_signal(int sig) 
+{
+    keep_running = 0;
+}
 
 // PHYSICS ENGINE 
 void update_physics(DroneState *drone) 
@@ -77,13 +85,6 @@ int main()
 
         // Read Input (Non-blocking)
         ssize_t bytesRead = read(fd_KD, &msg, sizeof(msg));
-        if (bytesRead == -1) 
-        {
-            if (errno != EAGAIN) 
-            {
-                perror("Drone: Error reading input commands");
-            }
-        }
         
         // Read Obstacles (Non-blocking)
         ssize_t obsBytes = read(fd_BBD, obstacles, sizeof(obstacles));
@@ -100,6 +101,21 @@ int main()
         }
         
         // HANDLE QUIT 
+        /*  ASSIGNMENT1 CORRECTION:
+                - fixing the killing 
+        */
+        if (bytesRead == 0) 
+        {
+            // Keyboard process has died (EOF). We should quit too.
+            printf("Drone: Keyboard disconnected. Stopping.\n");
+            msg.command = 'q'; // Force a quit command
+            bytesRead = 1;     // Pretend we read data so the quit logic below triggers
+        }
+        else if (bytesRead == -1) 
+        {
+            if (errno != EAGAIN) { perror("Drone: Error reading input commands"); }
+        }
+        
         if (bytesRead > 0 && msg.command == 'q') 
         {
             drone.x = -1.0; // A distinct value to signal termination           

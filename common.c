@@ -3,15 +3,6 @@
 #include <stdarg.h>
 #include <string.h>
 #include <fcntl.h>
-#include <signal.h>
-
-// GLOBAL FLAG FOR CLEANUP
-volatile sig_atomic_t keep_running = 1;
-
-void handle_signal(int sig) 
-{
-    keep_running = 0;
-}
 
 // Log function that appends to a file
 void log_msg(const char *process_name, const char *format, ...)

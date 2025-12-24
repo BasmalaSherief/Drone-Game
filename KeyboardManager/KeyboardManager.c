@@ -6,8 +6,17 @@
 #include <sys/types.h> 
 #include <string.h> 
 #include <errno.h>
+#include <signal.h>
 #include "../common.h"
-#include "../common.c"
+
+
+// GLOBAL FLAG FOR CLEANUP
+volatile sig_atomic_t keep_running = 1;
+
+void handle_signal(int sig) 
+{
+    keep_running = 0;
+}
 
 // Draws the 3x3 control grid and highlights the active key
 void draw_input_display(WINDOW *win, int last_ch) 
@@ -232,6 +241,7 @@ int main()
         msg.command = cmd;
 
         ssize_t bytesWrittenKD = write(fd_KD, &msg, sizeof(msg));
+
         if (bytesWrittenKD == -1) 
         {
             if (errno != EPIPE && errno != EAGAIN) 

@@ -6,27 +6,22 @@ echo "--- DRONE GAME LAUNCHER ---"
 echo "[*] Cleaning up old pipes..."
 rm -f /tmp/fifo*
 
-# 2. CLEAR LOG FILE (Overwrites old logs)
+# 2. CLEAR LOG FILE
 echo "[*] Clearing log file..."
 > simulation.log 
 
-# 3. BLACKBOARD
-# Point to the folder: BlackBoardServer/server
+# 3. LAUNCH BLACKBOARD SERVER
+# We capture the Process ID ($!) of the new Konsole window
 echo "[*] Launching Blackboard Server..."
 konsole -e ./server & 
-sleep 1
-
-# 4. LOGIC PROCESSES
-# Point to their specific folders
-
-echo "[*] Launching Drone Dynamics..."
-./drone &
-
-sleep 0.5
-
-# 5. KEYBOARD MANAGER
-# Point to the folder: KeyboardManager/keyboard
-echo "[*] Launching Keyboard Manager..."
-konsole -e ./keyboard &
+SERVER_PID=$!
 
 echo "--- SYSTEM RUNNING ---"
+echo "Game is active. This terminal will close when the game ends."
+
+# 4. WAIT FOR GAME TO FINISH
+wait $SERVER_PID
+
+# 5. CLOSE THIS TERMINAL
+echo "Game finished. Closing terminal..."
+kill -9 $PPID
