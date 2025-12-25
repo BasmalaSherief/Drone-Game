@@ -10,6 +10,10 @@
 #include "../common.h"
 #include "../ObstaclesGenerator/ObstaclesGenerator.h"
 
+/*  ASSIGNMENT1 CORRECTION:
+        - Fixed the killing 
+*/
+
 // GLOBAL FLAG FOR CLEANUP
 volatile sig_atomic_t keep_running = 1;
 
@@ -78,16 +82,13 @@ int main()
     while(keep_running) 
     {
         InputMsg msg = {0,0,0};
-        // Reset inputs every frame
-        msg.command = 0; 
-        msg.force_x = 0; 
-        msg.force_y = 0;
 
         // Read Input (Non-blocking)
         ssize_t bytesRead = read(fd_KD, &msg, sizeof(msg));
         
         // Read Obstacles (Non-blocking)
         ssize_t obsBytes = read(fd_BBD, obstacles, sizeof(obstacles));
+        
         if (obsBytes == -1) 
         {
             if (errno != EAGAIN) 
@@ -101,12 +102,9 @@ int main()
         }
         
         // HANDLE QUIT 
-        /*  ASSIGNMENT1 CORRECTION:
-                - fixing the killing 
-        */
+        // The next is from assignment1 fixes; Keyboard process has died, We should quit too.
         if (bytesRead == 0) 
         {
-            // Keyboard process has died (EOF). We should quit too.
             printf("Drone: Keyboard disconnected. Stopping.\n");
             msg.command = 'q'; // Force a quit command
             bytesRead = 1;     // Pretend we read data so the quit logic below triggers
@@ -115,7 +113,7 @@ int main()
         {
             if (errno != EAGAIN) { perror("Drone: Error reading input commands"); }
         }
-        
+
         if (bytesRead > 0 && msg.command == 'q') 
         {
             drone.x = -1.0; // A distinct value to signal termination           

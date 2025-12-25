@@ -3,18 +3,22 @@
 
 #include "../common.h" 
 
+/*  ASSIGNMENT1 CORRECTION:
+        - Fixed the repulsive forces of obtacles and borders (by changing the parameters).
+*/
+
 // Lifecycle Constants
 #define OBSTACLE_LIFETIME 500 // Frames the obstacle stays alive
 #define SPAWN_CHANCE 5        // 5% chance per frame to spawn a new one
 #define SAFE_RADIUS 8.0       // Don't spawn within 8 units of the drone
 
 // Physics Constants
-#define REPULSIVE_GAIN 15.0   // Strength of the push
-#define INFLUENCE_RANGE 6.0   // Distance at which the force starts working
-#define MAX_FORCE 5.0         // Safety cap to prevent physics glitches
+#define REPULSIVE_GAIN 50   // Strength of the push
+#define INFLUENCE_RANGE 4.0   // Distance at which the force starts working
+#define MAX_FORCE 20        // Safety cap to prevent physics glitches
 #define BORDER_MARGIN_SPAWN 5
-#define BORDER_MARGIN 5.0      // Start pushing 5 units away from wall
-#define BORDER_GAIN 20.0       // How strong the wall pushes
+#define BORDER_MARGIN 2.0      // Start pushing 2 units away from wall
+#define BORDER_GAIN 100       // How strong the wall pushes
 
 // Functions
 // GENERATOR (Lifecycle Logic) 

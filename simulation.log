@@ -1,0 +1,117 @@
+[Thu Dec 25 03:29:36 2025] [MAIN] Process started with PID 248127
+[Thu Dec 25 03:29:36 2025] [MAIN] Launched Drone with PID: 248129
+[Thu Dec 25 03:29:36 2025] [MAIN] Launched Keyboard Manager with PID: 248130
+[Thu Dec 25 03:29:37 2025] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Thu Dec 25 03:29:37 2025] [SERVER] Received new target at 37,11
+[Thu Dec 25 03:29:37 2025] [SERVER] Received new target at 37,11
+[Thu Dec 25 03:29:37 2025] [SERVER] Received new target at 19,8
+[Thu Dec 25 03:29:37 2025] [SERVER] Received new target at 19,8
+[Thu Dec 25 03:29:37 2025] [SERVER] Received new target at 26,11
+[Thu Dec 25 03:29:38 2025] [SERVER] Received new target at 26,11
+[Thu Dec 25 03:29:39 2025] [SERVER] Received new target at 26,11
+[Thu Dec 25 03:29:39 2025] [SERVER] Received new target at 26,11
+[Thu Dec 25 03:29:40 2025] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Thu Dec 25 03:29:40 2025] [SERVER] Received new target at 26,11
+[Thu Dec 25 03:29:41 2025] [SERVER] Received new target at 26,11
+[Thu Dec 25 03:29:42 2025] [KEYBOARD] User pressed key code: 115
+[Thu Dec 25 03:29:42 2025] [INPUT] Command received: s
+[Thu Dec 25 03:29:42 2025] [KEYBOARD] User pressed key code: 258
+[Thu Dec 25 03:29:43 2025] [PHYSICS] Pos: (10.00, 10.35), Vel: (0.00, 0.33)
+[Thu Dec 25 03:29:46 2025] [PHYSICS] Pos: (10.00, 12.13), Vel: (0.00, 0.71)
+[Thu Dec 25 03:29:48 2025] [KEYBOARD] User pressed key code: 261
+[Thu Dec 25 03:29:49 2025] [PHYSICS] Pos: (10.29, 14.06), Vel: (0.38, 0.36)
+[Thu Dec 25 03:29:49 2025] [KEYBOARD] User pressed key code: 258
+[Thu Dec 25 03:29:49 2025] [SERVER] Target collected. Score: 1
+[Thu Dec 25 03:29:52 2025] [PHYSICS] Pos: (10.71, 16.09), Vel: (0.03, 0.54)
+[Thu Dec 25 03:29:55 2025] [PHYSICS] Pos: (10.75, 19.71), Vel: (0.00, 1.87)
+[Thu Dec 25 03:29:57 2025] [KEYBOARD] User pressed key code: 260
+[Thu Dec 25 03:29:58 2025] [PHYSICS] Pos: (10.37, 20.24), Vel: (-0.30, -0.40)
+[Thu Dec 25 03:30:01 2025] [PHYSICS] Pos: (7.25, 19.79), Vel: (-1.43, -0.04)
+[Thu Dec 25 03:30:04 2025] [PHYSICS] Pos: (5.14, 19.75), Vel: (-0.32, -0.00)
+[Thu Dec 25 03:30:07 2025] [PHYSICS] Pos: (3.78, 19.75), Vel: (-0.43, -0.00)
+[Thu Dec 25 03:30:10 2025] [PHYSICS] Pos: (2.37, 19.75), Vel: (-0.51, -0.00)
+[Thu Dec 25 03:30:13 2025] [PHYSICS] Pos: (2.39, 19.75), Vel: (0.09, -0.00)
+[Thu Dec 25 03:30:14 2025] [KEYBOARD] User pressed key code: 259
+[Thu Dec 25 03:30:15 2025] [KEYBOARD] User pressed key code: 261
+[Thu Dec 25 03:30:16 2025] [PHYSICS] Pos: (10.83, 19.09), Vel: (12.85, -0.08)
+[Thu Dec 25 03:30:19 2025] [PHYSICS] Pos: (39.72, 19.01), Vel: (2.69, -0.01)
+[Thu Dec 25 03:30:19 2025] [SERVER] Target collected. Score: 2
+[Thu Dec 25 03:30:22 2025] [PHYSICS] Pos: (51.59, 19.00), Vel: (13.86, -0.00)
+[Thu Dec 25 03:30:25 2025] [PHYSICS] Pos: (75.74, 19.00), Vel: (2.05, -0.00)
+[Thu Dec 25 03:30:28 2025] [PHYSICS] Pos: (77.94, 19.00), Vel: (-0.36, -0.00)
+[Thu Dec 25 03:30:31 2025] [PHYSICS] Pos: (77.54, 19.00), Vel: (-0.03, -0.00)
+[Thu Dec 25 03:30:34 2025] [PHYSICS] Pos: (77.50, 19.00), Vel: (-0.00, -0.00)
+[Thu Dec 25 03:30:37 2025] [PHYSICS] Pos: (77.50, 19.00), Vel: (-0.00, -0.00)
+[Thu Dec 25 03:30:40 2025] [PHYSICS] Pos: (77.50, 19.00), Vel: (-0.00, -0.00)
+[Thu Dec 25 03:30:43 2025] [PHYSICS] Pos: (77.50, 19.00), Vel: (-0.00, -0.00)
+[Thu Dec 25 03:30:46 2025] [PHYSICS] Pos: (77.50, 19.00), Vel: (-0.00, -0.00)
+[Thu Dec 25 03:30:49 2025] [KEYBOARD] User pressed key code: 259
+[Thu Dec 25 03:30:49 2025] [PHYSICS] Pos: (77.50, 18.93), Vel: (-0.00, -0.56)
+[Thu Dec 25 03:30:52 2025] [PHYSICS] Pos: (77.50, 2.51), Vel: (-0.00, -15.99)
+[Thu Dec 25 03:30:54 2025] [KEYBOARD] User pressed key code: 260
+[Thu Dec 25 03:30:55 2025] [PHYSICS] Pos: (76.97, 11.77), Vel: (-0.18, 2.85)
+[Thu Dec 25 03:30:58 2025] [KEYBOARD] User pressed key code: 259
+[Thu Dec 25 03:30:58 2025] [PHYSICS] Pos: (76.20, 14.55), Vel: (-0.17, -0.66)
+[Thu Dec 25 03:31:02 2025] [PHYSICS] Pos: (76.02, 6.24), Vel: (-0.01, -3.68)
+[Thu Dec 25 03:31:04 2025] [KEYBOARD] User pressed key code: 261
+[Thu Dec 25 03:31:05 2025] [PHYSICS] Pos: (76.24, 2.81), Vel: (0.42, 0.36)
+[Thu Dec 25 03:31:08 2025] [PHYSICS] Pos: (77.30, 3.21), Vel: (0.16, 0.03)
+[Thu Dec 25 03:31:11 2025] [PHYSICS] Pos: (77.57, 3.25), Vel: (0.56, 0.00)
+[Thu Dec 25 03:31:14 2025] [PHYSICS] Pos: (77.62, 3.25), Vel: (-0.10, 0.00)
+[Thu Dec 25 03:31:17 2025] [PHYSICS] Pos: (77.80, 3.25), Vel: (-0.25, 0.00)
+[Thu Dec 25 03:31:20 2025] [PHYSICS] Pos: (77.77, 3.25), Vel: (0.39, 0.00)
+[Thu Dec 25 03:31:23 2025] [PHYSICS] Pos: (77.92, 3.25), Vel: (-0.35, 0.00)
+[Thu Dec 25 03:31:24 2025] [KEYBOARD] User pressed key code: 258
+[Thu Dec 25 03:31:26 2025] [PHYSICS] Pos: (77.54, 12.96), Vel: (-0.03, 8.03)
+[Thu Dec 25 03:31:29 2025] [PHYSICS] Pos: (77.50, 21.89), Vel: (-0.00, 0.71)
+[Thu Dec 25 03:31:32 2025] [PHYSICS] Pos: (77.50, 21.33), Vel: (-0.00, -0.06)
+[Thu Dec 25 03:31:33 2025] [KEYBOARD] User pressed key code: 260
+[Thu Dec 25 03:31:35 2025] [PHYSICS] Pos: (59.35, 21.26), Vel: (-12.79, -0.01)
+[Thu Dec 25 03:31:38 2025] [PHYSICS] Pos: (45.12, 21.25), Vel: (-1.13, -0.00)
+[Thu Dec 25 03:31:41 2025] [PHYSICS] Pos: (43.87, 21.25), Vel: (-0.10, -0.00)
+[Thu Dec 25 03:31:44 2025] [PHYSICS] Pos: (14.26, 21.25), Vel: (-20.09, -0.00)
+[Thu Dec 25 03:31:47 2025] [PHYSICS] Pos: (6.76, 21.25), Vel: (11.26, -0.00)
+[Thu Dec 25 03:31:48 2025] [KEYBOARD] User pressed key code: 259
+[Thu Dec 25 03:31:50 2025] [PHYSICS] Pos: (20.45, 13.82), Vel: (1.92, -2.10)
+[Thu Dec 25 03:31:53 2025] [PHYSICS] Pos: (22.94, 13.74), Vel: (0.23, 0.20)
+[Thu Dec 25 03:31:55 2025] [KEYBOARD] User pressed key code: 261
+[Thu Dec 25 03:31:55 2025] [KEYBOARD] User pressed key code: 259
+[Thu Dec 25 03:31:56 2025] [PHYSICS] Pos: (23.71, 13.69), Vel: (0.22, -0.37)
+[Thu Dec 25 03:31:57 2025] [KEYBOARD] User pressed key code: 114
+[Thu Dec 25 03:31:57 2025] [INPUT] Command received: r
+[Thu Dec 25 03:31:58 2025] [SERVER] Target collected. Score: 3
+[Thu Dec 25 03:31:59 2025] [SERVER] Received new target at 17,14
+[Thu Dec 25 03:31:59 2025] [SERVER] Received new target at 15,17
+[Thu Dec 25 03:31:59 2025] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Thu Dec 25 03:32:00 2025] [SERVER] Received new target at 15,17
+[Thu Dec 25 03:32:00 2025] [SERVER] Received new target at 15,17
+[Thu Dec 25 03:32:00 2025] [SERVER] Received new target at 67,17
+[Thu Dec 25 03:32:00 2025] [SERVER] Received new target at 67,17
+[Thu Dec 25 03:32:01 2025] [SERVER] Received new target at 67,17
+[Thu Dec 25 03:32:02 2025] [KEYBOARD] User pressed key code: 260
+[Thu Dec 25 03:32:02 2025] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Thu Dec 25 03:32:02 2025] [SERVER] Received new target at 67,17
+[Thu Dec 25 03:32:03 2025] [SERVER] Received new target at 67,17
+[Thu Dec 25 03:32:03 2025] [SERVER] Received new target at 67,17
+[Thu Dec 25 03:32:05 2025] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Thu Dec 25 03:32:06 2025] [KEYBOARD] User pressed key code: 115
+[Thu Dec 25 03:32:06 2025] [INPUT] Command received: s
+[Thu Dec 25 03:32:07 2025] [KEYBOARD] User pressed key code: 260
+[Thu Dec 25 03:32:08 2025] [PHYSICS] Pos: (8.66, 10.00), Vel: (-0.74, 0.00)
+[Thu Dec 25 03:32:10 2025] [KEYBOARD] User pressed key code: 115
+[Thu Dec 25 03:32:10 2025] [INPUT] Command received: s
+[Thu Dec 25 03:32:10 2025] [KEYBOARD] User pressed key code: 260
+[Thu Dec 25 03:32:11 2025] [PHYSICS] Pos: (6.80, 10.00), Vel: (-1.68, 0.00)
+[Thu Dec 25 03:32:14 2025] [PHYSICS] Pos: (2.97, 10.00), Vel: (-1.00, 0.00)
+[Thu Dec 25 03:32:17 2025] [PHYSICS] Pos: (2.28, 10.00), Vel: (0.18, 0.00)
+[Thu Dec 25 03:32:20 2025] [PHYSICS] Pos: (2.48, 10.00), Vel: (0.02, 0.00)
+[Thu Dec 25 03:32:23 2025] [PHYSICS] Pos: (2.50, 10.00), Vel: (0.00, 0.00)
+[Thu Dec 25 03:32:26 2025] [PHYSICS] Pos: (2.50, 10.00), Vel: (0.00, 0.00)
+[Thu Dec 25 03:32:29 2025] [PHYSICS] Pos: (2.50, 10.00), Vel: (0.00, 0.00)
+[Thu Dec 25 03:32:30 2025] [KEYBOARD] User pressed key code: 113
+[Thu Dec 25 03:32:30 2025] [KEYBOARD] Sent QUIT command. Exiting loop.
+[Thu Dec 25 03:32:30 2025] [KEYBOARD] Exiting cleanly
+[Thu Dec 25 03:32:30 2025] [DRONE] Exiting cleanly
+[Thu Dec 25 03:32:34 2025] [SERVER] Detected Quit Signal from Drone.
+[Thu Dec 25 03:32:34 2025] [MAIN] Stopping system...
+[Thu Dec 25 03:32:34 2025] [MAIN] Clean exit. Bye!
