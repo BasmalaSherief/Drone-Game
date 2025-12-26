@@ -156,6 +156,7 @@ int main()
             {
                 log_msg("SERVER", "Detected Quit Signal from Drone.");
                 keep_running = 0; // Trigger cleanup
+                continue;
             } 
 
             if (incoming_drone_state.x == -2.0) 
@@ -265,6 +266,16 @@ int main()
 
     log_msg("MAIN", "Stopping system...");
 
+
+    // Close pipes
+    close(fd_DBB);
+    close(fd_BBD);
+    close(fd_BBDIS);
+    close(fd_BBObs);
+    close(fd_ObsBB);
+    close(fd_BBTar);
+    close(fd_TarBB);
+
     // Kill children using their PIDs
     if (pid_drone > 0) kill(pid_drone, SIGTERM);
     if (pid_keyboard > 0) kill(pid_keyboard, SIGTERM);
@@ -279,15 +290,6 @@ int main()
 
     // Destroy Ncurses window
     endwin();  
-
-    // Close pipes
-    close(fd_DBB);
-    close(fd_BBD);
-    close(fd_BBDIS);
-    close(fd_BBObs);
-    close(fd_ObsBB);
-    close(fd_BBTar);
-    close(fd_TarBB);
 
     // Unlink pipes so they don't persist
     unlink(fifoDBB);

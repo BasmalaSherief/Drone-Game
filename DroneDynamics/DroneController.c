@@ -120,6 +120,7 @@ int main()
             ssize_t quitBytes = write(fd_DBB, &drone, sizeof(drone));
             if (quitBytes == -1) perror("Drone: Failed to send reset signal");
             keep_running = 0; // Break loop gracefully 
+            break;
         }
 
         // HANDLE START/RESET

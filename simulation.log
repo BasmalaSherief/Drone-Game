@@ -1,0 +1,20 @@
+[Fri Dec 26 17:12:46 2025] [MAIN] Process started with PID 133324
+[Fri Dec 26 17:12:46 2025] [MAIN] Launched Drone with PID: 133326
+[Fri Dec 26 17:12:46 2025] [MAIN] Launched Keyboard Manager with PID: 133327
+[Fri Dec 26 17:12:46 2025] [MAIN] Launched Obstacle Process with PID: 133328
+[Fri Dec 26 17:12:46 2025] [MAIN] Launched Target Process with PID: 133329
+[Fri Dec 26 17:12:46 2025] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Fri Dec 26 17:12:46 2025] [TARGET_PROC] Spawned new target at 37,5 (Total: 1)
+[Fri Dec 26 17:12:47 2025] [TARGET_PROC] Spawned new target at 37,5 (Total: 2)
+[Fri Dec 26 17:12:47 2025] [TARGET_PROC] Spawned new target at 37,5 (Total: 3)
+[Fri Dec 26 17:12:47 2025] [TARGET_PROC] Spawned new target at 37,5 (Total: 4)
+[Fri Dec 26 17:12:47 2025] [TARGET_PROC] Spawned new target at 37,5 (Total: 5)
+[Fri Dec 26 17:12:48 2025] [TARGET_PROC] Spawned new target at 37,5 (Total: 6)
+[Fri Dec 26 17:12:48 2025] [TARGET_PROC] Spawned new target at 37,5 (Total: 7)
+[Fri Dec 26 17:12:48 2025] [KEYBOARD] User pressed key code: 113
+[Fri Dec 26 17:12:48 2025] [KEYBOARD] Sent QUIT command. Exiting loop.
+[Fri Dec 26 17:12:48 2025] [DRONE] Exiting cleanly
+[Fri Dec 26 17:12:48 2025] [SERVER] Drone process disconnected (EPIPE). Stopping.
+[Fri Dec 26 17:12:48 2025] [KEYBOARD] Exiting cleanly
+[Fri Dec 26 17:12:48 2025] [MAIN] Stopping system...
+[Fri Dec 26 17:12:48 2025] [MAIN] Clean exit. Bye!
