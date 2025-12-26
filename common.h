@@ -9,6 +9,9 @@
 #define MAX_OBSTACLES 10
 #define MAX_TARGETS 10
 
+// GAME CONFIGURATION
+#define TOTAL_TARGETS_TO_WIN 10
+
 // KEYBOARD INPUT (Input Process -> Drone Process) 
 typedef struct {
     int force_x;    // -1, 0, 1
@@ -34,6 +37,12 @@ typedef struct {
     int active;     // 0 or 1
     int value;      // For scoring
 } Target;
+
+// Structure to send (Targets + Score gained this frame) to Server 
+typedef struct {
+    Target targets[MAX_TARGETS];
+    int score_increment;
+} TargetPacket;
 
 // THE WORLD STATE (Master Process -> Display Process) 
 typedef struct {

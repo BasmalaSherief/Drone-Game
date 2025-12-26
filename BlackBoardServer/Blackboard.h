@@ -4,9 +4,6 @@
 #include <sys/types.h>
 #include "../common.h"
 
-// GAME CONFIGURATION
-#define TOTAL_TARGETS_TO_WIN 10
-
 // Ncurses Colors
 #define COLOR_DRONE     1
 #define COLOR_OBSTACLE  2

@@ -12,8 +12,6 @@
 #include <signal.h>
 #include "Blackboard.h"
 #include "../common.h"
-#include "../TargetGenerator/TargetGenerator.h"
-#include "../ObstaclesGenerator/ObstaclesGenerator.h"
 
 /*  ASSIGNMENT1 CORRECTION:
         - fixed the killing through the handle_signal and global flag for cleaning
@@ -28,6 +26,8 @@ volatile sig_atomic_t keep_running = 1;
 // Global PIDs to track children
 pid_t pid_drone;
 pid_t pid_keyboard;
+pid_t pid_obst;
+pid_t pid_targ;
 
 void handle_signal(int sig) 
 {
@@ -67,10 +67,19 @@ int main()
     const char *fifoDBB = "/tmp/fifoDBB";   
     const char *fifoBBD = "/tmp/fifoBBD";   
     const char *fifoBBDIS = "/tmp/fifoBBDIS"; 
+    const char *fifoBBObs = "/tmp/fifoBBObs";   // Server -> Obs
+    const char *fifoObsBB = "/tmp/fifoObsBB"; // Obs -> Server
+    const char *fifoBBTar = "/tmp/fifoBBTar";   // Server -> Tar
+    const char *fifoTarBB = "/tmp/fifoTarBB"; // Tar -> Server
 
     if (mkfifo(fifoDBB, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoDBB"); exit(EXIT_FAILURE); }
     if (mkfifo(fifoBBD, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBD"); exit(EXIT_FAILURE); }
     if (mkfifo(fifoBBDIS, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBDIS"); exit(EXIT_FAILURE); }
+    if (mkfifo(fifoBBObs, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBObs"); exit(EXIT_FAILURE); }
+    if (mkfifo(fifoObsBB, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoObsBB"); exit(EXIT_FAILURE); }
+    if (mkfifo(fifoBBTar, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBTar"); exit(EXIT_FAILURE); }
+    if (mkfifo(fifoTarBB, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoTarBB"); exit(EXIT_FAILURE); }
+
 
     // The next code block is from the assigment1 fixes
     // LAUNCH CHILDREN 
@@ -85,6 +94,15 @@ int main()
     pid_keyboard = spawn_process("konsole", arg_list_kb);
     log_msg("MAIN", "Launched Keyboard Manager with PID: %d", pid_keyboard);
 
+    // Launch Obstacle Process 
+    char *arg_list_obs[] = { "./obstacle_process", NULL };
+    pid_obst = spawn_process("./obstacle_process", arg_list_obs);
+    log_msg("MAIN", "Launched Obstacle Process with PID: %d", pid_obst);
+
+    // Launch Target Process 
+    char *arg_list_tar[] = { "./target_process", NULL };
+    pid_targ = spawn_process("./target_process", arg_list_tar);
+    log_msg("MAIN", "Launched Target Process with PID: %d", pid_targ);
     // NCURSES INIT
     init_console();
 
@@ -98,7 +116,20 @@ int main()
     int fd_BBDIS = open(fifoBBDIS, O_WRONLY);
     if (fd_BBDIS == -1) { endwin(); perror("open write BBDIS"); exit(1); }
 
+    int fd_BBObs = open(fifoBBObs, O_WRONLY );
+    if (fd_BBObs == -1) { endwin(); perror("open write BBObs"); exit(1); }
+  
+    int fd_ObsBB = open(fifoObsBB, O_RDONLY); 
+    if (fd_ObsBB == -1) { endwin(); perror("open read ObsBB"); exit(1); }
+
+    int fd_BBTar = open(fifoBBTar, O_WRONLY );
+    if (fd_BBTar == -1) { endwin(); perror("open write BBTar"); exit(1); }
+  
+    int fd_TarBB = open(fifoTarBB, O_RDONLY); 
+    if (fd_TarBB == -1) { endwin(); perror("open read TarBB"); exit(1); }
+
     DroneState incoming_drone_state;
+    TargetPacket tar_packet;
 
     while(keep_running) 
     {
@@ -158,46 +189,34 @@ int main()
         // LOGIC 
         if (world.game_active) 
         {
-            // Obstacles 
-            update_obstacle_lifecycle(world.obstacles, &world.drone);
+            // OBSTACLE SYNC
+            // Send Drone position to Obstacle Process
+            write(fd_BBObs, &world.drone, sizeof(DroneState));
+            // Read back updated Obstacles
+            read(fd_ObsBB, world.obstacles, sizeof(world.obstacles));
 
-            // Targets (Spawn Logic)
-            if (targets_spawned_total < TOTAL_TARGETS_TO_WIN) 
+            // TARGET SYNC
+            // Send Drone position to Target Process
+            write(fd_BBTar, &world.drone, sizeof(DroneState));
+            // Read back updated Targets + Score
+            read(fd_TarBB, &tar_packet, sizeof(TargetPacket));
+            
+            // Update local world
+            memcpy(world.targets, tar_packet.targets, sizeof(world.targets));
+            
+            if (tar_packet.score_increment > 0) 
             {
-                int spawned = refresh_targets(world.targets, &world.drone);
-                
-                // Execute this logic if a NEW target was actually created
-                if (spawned > 0) 
-                {
-                    targets_spawned_total += spawned;
-
-                    // Log the new target position by finding the active one
-                    for(int i=0; i<MAX_TARGETS; i++) {
-                        if (world.targets[i].active) {
-                             // Log the targets
-                             log_msg("SERVER", "Received new target at %d,%d", world.targets[i].x, world.targets[i].y);
-                             break; 
-                        }
-                    }
-                }
+                world.score += tar_packet.score_increment;
+                log_msg("SERVER", "Score Update! New Score: %d", world.score);
             }
 
-            // Targets (Collision Logic)
-            int points = check_target_collision(world.targets, &world.drone);
-            if(points > 0) 
-            {
-                world.score += points;
-                targets_collected_total += points;
-                log_msg("SERVER", "Target collected. Score: %d", world.score);
-            }
-
-            // CHECK WIN CONDITION
-            if (targets_collected_total >= TOTAL_TARGETS_TO_WIN) 
+            // Win Condition
+            if (world.score >= TOTAL_TARGETS_TO_WIN) 
             {
                 erase();
                 attron(A_BOLD | COLOR_PAIR(COLOR_TARGET));
-                mvprintw(MAP_HEIGHT/2, MAP_WIDTH/2 - 5, "YOU WIN!");
-                mvprintw(MAP_HEIGHT/2 + 1, MAP_WIDTH/2 - 10, "Final Score: %d", world.score);
+                mvprintw(LINES/2, COLS/2 - 5, "YOU WIN!");
+                mvprintw(LINES/2 + 1, COLS/2 - 10, "Final Score: %d", world.score);
                 attroff(A_BOLD | COLOR_PAIR(COLOR_TARGET));
                 refresh();
                 sleep(4);  
@@ -215,11 +234,12 @@ int main()
         {
             if (errno == EPIPE) 
             {
-                printf("Server: Drone disconnected. Cannot write obstacles.\n");
+                log_msg("SERVER", "Drone process disconnected (EPIPE). Stopping.");
+                keep_running = 0;
             } 
             else 
             {
-                perror("Server: Error writing to Drone Pipe (fifoBBD)");
+                log_msg("SERVER", "Error writing to Drone Pipe: %s", strerror(errno));
             }
         }
 
@@ -229,11 +249,12 @@ int main()
         {
             if (errno == EPIPE) 
             {
-                printf("Server: Keyboard/Display disconnected. Cannot update UI.\n");
+                log_msg("SERVER", "Keyboard process disconnected (EPIPE). Stopping.");
+                keep_running = 0;
             } 
             else if (errno != EAGAIN) 
             { 
-                perror("Server: Error writing to Display Pipe (fifoBBDIS)");
+                log_msg("SERVER", "Error writing to Display Pipe: %s", strerror(errno));
             }
         }
 
@@ -247,10 +268,14 @@ int main()
     // Kill children using their PIDs
     if (pid_drone > 0) kill(pid_drone, SIGTERM);
     if (pid_keyboard > 0) kill(pid_keyboard, SIGTERM);
+    if (pid_obst > 0) kill(pid_obst, SIGTERM);
+    if (pid_targ > 0) kill(pid_targ, SIGTERM);
     
     // Wait for them to finish to avoid zombies
     waitpid(pid_drone, NULL, 0);
     waitpid(pid_keyboard, NULL, 0);
+    waitpid(pid_obst, NULL, 0);
+    waitpid(pid_targ, NULL, 0);
 
     // Destroy Ncurses window
     endwin();  
@@ -259,15 +284,25 @@ int main()
     close(fd_DBB);
     close(fd_BBD);
     close(fd_BBDIS);
+    close(fd_BBObs);
+    close(fd_ObsBB);
+    close(fd_BBTar);
+    close(fd_TarBB);
 
     // Unlink pipes so they don't persist
     unlink(fifoDBB);
     unlink(fifoBBD);
     unlink(fifoBBDIS);
+    unlink(fifoBBObs);
+    unlink(fifoObsBB);
+    unlink(fifoBBTar);
+    unlink(fifoTarBB);
 
     // Force kill group to ensure terminal windows close
     system("pkill -f drone");
     system("pkill -f keyboard");
+    system("pkill -f obstacle_process");
+    system("pkill -f target_process");
 
     // Logging end of the main process to the log file
     log_msg("MAIN", "Clean exit. Bye!");

@@ -4,37 +4,47 @@ CFLAGS = -I. -Wall
 LIBS = -lncurses -lm
 
 # Targets
-all: server drone keyboard
+all: server drone keyboard obstacle_process target_process
 
-# 1. Compile Shared Modules
+# ----------------------------
+# 1. SHARED MODULES (Functions)
+# ----------------------------
+
 common.o: common.c common.h
 	$(CC) $(CFLAGS) -c common.c -o common.o
 
-ObstaclesGenerator.o: ObstaclesGenerator/ObstaclesGenerator.c ObstaclesGenerator/ObstaclesGenerator.h
-	$(CC) $(CFLAGS) -c ObstaclesGenerator/ObstaclesGenerator.c -o ObstaclesGenerator.o
+Obstacles_functions.o: ObstaclesGenerator/Obstacles_functions.c ObstaclesGenerator/ObstaclesGenerator.h
+	$(CC) $(CFLAGS) -c ObstaclesGenerator/Obstacles_functions.c -o Obstacles_functions.o
 
-TargetGenerator.o: TargetGenerator/TargetGenerator.c TargetGenerator/TargetGenerator.h
-	$(CC) $(CFLAGS) -c TargetGenerator/TargetGenerator.c -o TargetGenerator.o
+Targets_functions.o: TargetGenerator/Targets_functions.c TargetGenerator/TargetGenerator.h
+	$(CC) $(CFLAGS) -c TargetGenerator/Targets_functions.c -o Targets_functions.o
+
+Keyboard_functions.o: KeyboardManager/Keyboard_functions.c KeyboardManager/KeyboardManager.h
+	$(CC) $(CFLAGS) -c KeyboardManager/Keyboard_functions.c -o Keyboard_functions.o
 
 Blackboard_functions.o: BlackBoardServer/Blackboard_functions.c BlackBoardServer/Blackboard.h
 	$(CC) $(CFLAGS) -c BlackBoardServer/Blackboard_functions.c -o Blackboard_functions.o
 
-# 2. Blackboard Server
-# Links: common, obstacles, targets, and blackboard functions
-server: BlackBoardServer/BlackboardServer.c common.o ObstaclesGenerator.o TargetGenerator.o Blackboard_functions.o
-	$(CC) $(CFLAGS) BlackBoardServer/BlackboardServer.c common.o ObstaclesGenerator.o TargetGenerator.o Blackboard_functions.o -o server $(LIBS)
+# ----------------------------
+# 2. EXECUTABLES
+# ----------------------------
 
-# 3. Drone Controller
-# Links: common and obstacles (for physics)
-drone: DroneDynamics/DroneController.c common.o ObstaclesGenerator.o
-	$(CC) $(CFLAGS) DroneDynamics/DroneController.c common.o ObstaclesGenerator.o -o drone $(LIBS)
+server: BlackBoardServer/BlackboardServer.c common.o Blackboard_functions.o
+	$(CC) $(CFLAGS) BlackBoardServer/BlackboardServer.c common.o Blackboard_functions.o -o server $(LIBS)
 
-# 4. Keyboard Manager
-# Links: common
-keyboard: KeyboardManager/KeyboardManager.c common.o
-	$(CC) $(CFLAGS) KeyboardManager/KeyboardManager.c common.o -o keyboard $(LIBS)
+drone: DroneDynamics/DroneController.c common.o Obstacles_functions.o
+	$(CC) $(CFLAGS) DroneDynamics/DroneController.c common.o Obstacles_functions.o -o drone $(LIBS)
+
+keyboard: KeyboardManager/KeyboardManager.c common.o Keyboard_functions.o
+	$(CC) $(CFLAGS) KeyboardManager/KeyboardManager.c common.o Keyboard_functions.o -o keyboard $(LIBS)
+
+obstacle_process: ObstaclesGenerator/ObstaclesGenerator.c common.o Obstacles_functions.o
+	$(CC) $(CFLAGS) ObstaclesGenerator/ObstaclesGenerator.c common.o Obstacles_functions.o -o obstacle_process $(LIBS)
+
+target_process: TargetGenerator/TargetGenerator.c common.o Targets_functions.o
+	$(CC) $(CFLAGS) TargetGenerator/TargetGenerator.c common.o Targets_functions.o -o target_process $(LIBS)
 
 # Clean up
 clean:
-	rm -f server drone keyboard *.o
+	rm -f server drone keyboard obstacle_process target_process *.o
 	rm -f /tmp/fifo*

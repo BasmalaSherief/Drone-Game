@@ -84,8 +84,10 @@ void draw_map(WorldState *world)
 
     // Draw Targets 
     attron(COLOR_PAIR(COLOR_TARGET));
-    for(int i=0; i<MAX_TARGETS; i++) {
-        if(world->targets[i].active) {
+    for(int i=0; i<MAX_TARGETS; i++) 
+    {
+        if(world->targets[i].active) 
+        {
             int screen_x = (int)(world->targets[i].x * scale_x);
             int screen_y = (int)(world->targets[i].y * scale_y);
             

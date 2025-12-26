@@ -5,7 +5,7 @@
 
 // CONSTANTS 
 #define TARGET_SPAWN_RATE 2   // % chance to spawn a new one per frame
-#define COLLECTION_RADIUS 2.0 // How close the drone must be to "eat" it
+#define COLLECTION_RADIUS 1.0 // How close the drone must be to "eat" it
 
 // Functions
 // GENERATOR 
