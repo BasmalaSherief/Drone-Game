@@ -8,9 +8,11 @@
 // LIMITS 
 #define MAX_OBSTACLES 10
 #define MAX_TARGETS 10
+#define TIMEOUT_SECONDS 4 // If no heartbeat for 4 seconds, kill system
 
 // GAME CONFIGURATION
 #define TOTAL_TARGETS_TO_WIN 10
+
 
 // KEYBOARD INPUT (Input Process -> Drone Process) 
 typedef struct {

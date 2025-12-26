@@ -44,7 +44,10 @@ obstacle_process: ObstaclesGenerator/ObstaclesGenerator.c common.o Obstacles_fun
 target_process: TargetGenerator/TargetGenerator.c common.o Targets_functions.o
 	$(CC) $(CFLAGS) TargetGenerator/TargetGenerator.c common.o Targets_functions.o -o target_process $(LIBS)
 
+watchdog: Watchdog/Watchdog.c common.o
+	$(CC) $(CFLAGS) Watchdog/Watchdog.c common.o -o watchdog $(LIBS)
+
 # Clean up
 clean:
-	rm -f server drone keyboard obstacle_process target_process *.o
+	rm -f server drone keyboard obstacle_process target_process watchdog *.o
 	rm -f /tmp/fifo*

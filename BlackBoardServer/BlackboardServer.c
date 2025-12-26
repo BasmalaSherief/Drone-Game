@@ -28,6 +28,7 @@ pid_t pid_drone;
 pid_t pid_keyboard;
 pid_t pid_obst;
 pid_t pid_targ;
+pid_t pid_wd;
 
 void handle_signal(int sig) 
 {
@@ -103,6 +104,11 @@ int main()
     char *arg_list_tar[] = { "./target_process", NULL };
     pid_targ = spawn_process("./target_process", arg_list_tar);
     log_msg("MAIN", "Launched Target Process with PID: %d", pid_targ);
+
+    char *arg_list_wd[] = { "./watchdog", NULL };
+    pid_wd = spawn_process("./watchdog", arg_list_wd);
+    log_msg("MAIN", "Launched Watchdog with PID: %d", pid_wd);
+
     // NCURSES INIT
     init_console();
 
@@ -133,6 +139,12 @@ int main()
 
     while(keep_running) 
     {
+        // Send heartbeat to the watchdog
+        if (pid_wd > 0) 
+        {
+            kill(pid_wd, SIGUSR1);
+        }
+
         // READ INPUT 
         ssize_t bytesRead = read(fd_DBB, &incoming_drone_state, sizeof(DroneState));
 
