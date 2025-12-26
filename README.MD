@@ -1,4 +1,3 @@
-```markdown
 # Multi-Process C Drone Simulator
 A real-time, terminal-based 2D drone simulation built in C for Linux.
 
