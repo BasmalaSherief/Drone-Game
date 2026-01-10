@@ -55,6 +55,46 @@ typedef struct {
     int game_active; // 0=Paused, 1=Flying
 } WorldState;
 
+// NETWORK COMMUNICATION STRUCTURES
+
+// Operation Mode
+typedef enum {
+    MODE_STANDALONE,  // Normal Assignment 2 operation
+    MODE_SERVER,      // Server: Share drone, receive obstacle
+    MODE_CLIENT       // Client: Send drone, display remote
+} OperationMode;
+
+// Network Message Types (for protocol)
+typedef enum {
+    MSG_OK,           // Handshake: "ok"
+    MSG_OOK,          // Acknowledgment: "ook"
+    MSG_SIZE,         // Window size: "size"
+    MSG_SOK,          // Size acknowledgment: "sok"
+    MSG_DRONE,        // Drone position: "drone"
+    MSG_DOK,          // Drone acknowledgment: "dok"
+    MSG_OBST,         // Obstacle position: "obst"
+    MSG_POK,          // Obstacle acknowledgment: "pok"
+    MSG_QUIT,         // Quit command: "q"
+    MSG_QOK           // Quit acknowledgment: "qok"
+} MessageType;
+
+// Network Packet Structure
+typedef struct {
+    char type[16];    // Message type string
+    float x;          // Position X
+    float y;          // Position Y
+    int width;        // Window width 
+    int height;       // Window height 
+} NetworkPacket;
+
+// Network Configuration
+typedef struct {
+    OperationMode mode;
+    char server_ip[32];
+    int port;
+    int socket_fd;
+    int connected;
+} NetworkConfig;
 
 // Log function that appends to a file
 void log_msg(const char *process_name, const char *format, ...);

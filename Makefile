@@ -4,7 +4,7 @@ CFLAGS = -I. -Wall
 LIBS = -lncurses -lm
 
 # Targets
-all: server drone keyboard obstacle_process target_process
+all: server drone keyboard obstacle_process target_process watchdog
 
 # ----------------------------
 # 1. SHARED MODULES (Functions)
@@ -25,12 +25,15 @@ Keyboard_functions.o: KeyboardManager/Keyboard_functions.c KeyboardManager/Keybo
 Blackboard_functions.o: BlackBoardServer/Blackboard_functions.c BlackBoardServer/Blackboard.h
 	$(CC) $(CFLAGS) -c BlackBoardServer/Blackboard_functions.c -o Blackboard_functions.o
 
+NetworkManager.o: NetworkManager/NetworkManager.c NetworkManager/NetworkManager.h
+	$(CC) $(CFLAGS) -c NetworkManager/NetworkManager.c -o NetworkManager.o
+
 # ----------------------------
 # 2. EXECUTABLES
 # ----------------------------
 
-server: BlackBoardServer/BlackboardServer.c common.o Blackboard_functions.o
-	$(CC) $(CFLAGS) BlackBoardServer/BlackboardServer.c common.o Blackboard_functions.o -o server $(LIBS)
+server: BlackBoardServer/BlackboardServer.c common.o Blackboard_functions.o NetworkManager.o
+	$(CC) $(CFLAGS) BlackBoardServer/BlackboardServer.c common.o Blackboard_functions.o NetworkManager.o -o server $(LIBS)
 
 drone: DroneDynamics/DroneController.c common.o Obstacles_functions.o
 	$(CC) $(CFLAGS) DroneDynamics/DroneController.c common.o Obstacles_functions.o -o drone $(LIBS)

@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <signal.h>
 #include "Blackboard.h"
+#include "../NetworkManager/NetworkManager.h"
 #include "../common.h"
 
 /*  ASSIGNMENT1 CORRECTION:
@@ -22,6 +23,9 @@
 
 // GLOBAL FLAG FOR CLEANUP
 volatile sig_atomic_t keep_running = 1;
+
+// Global network config
+NetworkConfig *net_config = NULL;
 
 // Global PIDs to track children
 pid_t pid_drone;
@@ -81,7 +85,6 @@ int main()
     if (mkfifo(fifoBBTar, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBTar"); exit(EXIT_FAILURE); }
     if (mkfifo(fifoTarBB, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoTarBB"); exit(EXIT_FAILURE); }
 
-
     // The next code block is from the assigment1 fixes
     // LAUNCH CHILDREN 
     // Launch Drone
@@ -109,6 +112,36 @@ int main()
     pid_wd = spawn_process("./watchdog", arg_list_wd);
     log_msg("MAIN", "Launched Watchdog with PID: %d", pid_wd);
 
+    // INITIALIZE NETWORK
+    net_config = init_network_config("params.conf");
+    
+    if (net_config->mode == MODE_SERVER) 
+    {
+        log_msg("SERVER", "Starting in SERVER mode");
+        // Initialize network
+        if (network_server_init(net_config) < 0) 
+        {
+            fprintf(stderr, "Failed to initialize server\n");
+            exit(1);
+        }
+        server_handshake(net_config->socket_fd);
+        server_send_size(net_config->socket_fd, MAP_WIDTH, MAP_HEIGHT);
+    }
+    else if (net_config->mode == MODE_CLIENT) 
+    {
+        log_msg("CLIENT", "Starting in CLIENT mode");
+        // Connect to server
+        if (network_client_init(net_config) < 0) 
+        {
+            fprintf(stderr, "Failed to connect to server\n");
+            exit(1);
+        }
+        client_handshake(net_config->socket_fd);
+        int width, height;
+        client_receive_size(net_config->socket_fd, &width, &height);
+        // Adjust window size to match server
+        log_msg("CLIENT", "Server window size: %dx%d", width, height);
+    }
     // NCURSES INIT
     init_console();
 
