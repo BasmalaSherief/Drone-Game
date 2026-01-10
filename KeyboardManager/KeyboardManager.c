@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <math.h>
 #include <ncurses.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -70,9 +71,11 @@ int main()
     {
         int ch;
         int last_ch = 0;
-        int current_fx = 0, current_fy = 0;
         char cmd = 0;
-        int key_pressed = 0;
+        float fx = 0.0, fy = 0.0;  // Force components
+
+        // RESET key tracking each frame 
+        bool keys_pressed[512] = {false}; // Local array, reset each frame
 
         // CHECK FOR RESIZE
         // If the user resized the terminal, we need to resize the internal windows
@@ -99,18 +102,15 @@ int main()
         // INPUT HANDLING (Buffer Flush)
         while((ch = getch()) != ERR) 
         {
-            key_pressed = 1;
             if (ch == KEY_RESIZE) continue; // Ignore resize events 
             last_ch = ch;
 
+            keys_pressed[ch] = true;  // Mark this key as pressed
+            last_ch = ch;  // Track for display purposes
+
             // Map ARROWS to Forces 
             switch(ch) 
-            {
-                case KEY_UP:    current_fy = -1; break;
-                case KEY_DOWN:  current_fy =  1; break;
-                case KEY_LEFT:  current_fx = -1; break;
-                case KEY_RIGHT: current_fx =  1; break;
-                
+            {              
                 // Map COMMANDS 
                 case 'q': cmd = 'q'; break; 
                 case 's': cmd = 's'; break;
@@ -131,9 +131,62 @@ int main()
             }
         }
 
+        // CALCULATE FORCE VECTOR (Supporting 8 directions)
+        bool up    = keys_pressed[KEY_UP];
+        bool down  = keys_pressed[KEY_DOWN];
+        bool left  = keys_pressed[KEY_LEFT];
+        bool right = keys_pressed[KEY_RIGHT];
+        
+        // Diagonal movements (8 directions total)
+        if (up && right) 
+        {
+            // Northeast diagonal
+            fx = 1.0 / sqrt(2.0);   // ~0.707
+            fy = -1.0 / sqrt(2.0);  // Negative Y = up on screen
+        }
+        else if (up && left) 
+        {
+            // Northwest diagonal
+            fx = -1.0 / sqrt(2.0);
+            fy = -1.0 / sqrt(2.0);
+        }
+        else if (down && right) 
+        {
+            // Southeast diagonal
+            fx = 1.0 / sqrt(2.0);
+            fy = 1.0 / sqrt(2.0);
+        }
+        else if (down && left) 
+        {
+            // Southwest diagonal
+            fx = -1.0 / sqrt(2.0);
+            fy = 1.0 / sqrt(2.0);
+        }
+        // Cardinal directions (if no diagonal detected)
+        else if (up) 
+        {
+            fx = 0.0;
+            fy = -1.0;  // Up
+        }
+        else if (down) 
+        {
+            fx = 0.0;
+            fy = 1.0;   // Down
+        }
+        else if (left) 
+        {
+            fx = -1.0;  // Left
+            fy = 0.0;
+        }
+        else if (right) 
+        {
+            fx = 1.0;   // Right
+            fy = 0.0;
+        }
+
         // SEND COMMAND TO DRONE 
-        msg.force_x = current_fx;
-        msg.force_y = current_fy;
+        msg.force_x = fx;  // Normalized direction (-1 to +1)
+        msg.force_y = fy;
         msg.command = cmd;
 
         ssize_t bytesWrittenKD = write(fd_KD, &msg, sizeof(msg));

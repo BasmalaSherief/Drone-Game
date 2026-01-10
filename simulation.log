@@ -1,0 +1,36 @@
+[Sat Jan 10 21:28:34 2026] [MAIN] Process started with PID 18561
+[Sat Jan 10 21:28:34 2026] [MAIN] Launched Drone with PID: 18563
+[Sat Jan 10 21:28:34 2026] [MAIN] Launched Keyboard Manager with PID: 18564
+[Sat Jan 10 21:28:34 2026] [MAIN] Launched Obstacle Process with PID: 18565
+[Sat Jan 10 21:28:34 2026] [MAIN] Launched Target Process with PID: 18566
+[Sat Jan 10 21:28:34 2026] [MAIN] Launched Watchdog with PID: 18567
+[Sat Jan 10 21:28:35 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Sat Jan 10 21:28:35 2026] [TARGET_PROC] Spawned new target at 65,14 (Total: 1)
+[Sat Jan 10 21:28:35 2026] [TARGET_PROC] Spawned new target at 54,16 (Total: 2)
+[Sat Jan 10 21:28:35 2026] [TARGET_PROC] Spawned new target at 54,16 (Total: 3)
+[Sat Jan 10 21:28:35 2026] [TARGET_PROC] Spawned new target at 54,16 (Total: 4)
+[Sat Jan 10 21:28:36 2026] [TARGET_PROC] Spawned new target at 63,7 (Total: 5)
+[Sat Jan 10 21:28:36 2026] [TARGET_PROC] Spawned new target at 63,7 (Total: 6)
+[Sat Jan 10 21:28:38 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Sat Jan 10 21:28:38 2026] [TARGET_PROC] Spawned new target at 63,7 (Total: 7)
+[Sat Jan 10 21:28:38 2026] [KEYBOARD] User pressed key code: 115
+[Sat Jan 10 21:28:38 2026] [INPUT] Command received: s
+[Sat Jan 10 21:28:38 2026] [TARGET_PROC] Spawned new target at 63,7 (Total: 8)
+[Sat Jan 10 21:28:38 2026] [DRONE] Game started
+[Sat Jan 10 21:28:39 2026] [TARGET_PROC] Spawned new target at 63,7 (Total: 9)
+[Sat Jan 10 21:28:40 2026] [KEYBOARD] User pressed key code: 259
+[Sat Jan 10 21:28:41 2026] [PHYSICS] Pos: (10.00, 9.76), Vel: (0.00, -0.39)
+[Sat Jan 10 21:28:41 2026] [TARGET_PROC] Spawned new target at 63,7 (Total: 10)
+[Sat Jan 10 21:28:42 2026] [KEYBOARD] User pressed key code: 261
+[Sat Jan 10 21:28:44 2026] [PHYSICS] Pos: (12.25, 7.28), Vel: (0.90, -0.14)
+[Sat Jan 10 21:28:44 2026] [KEYBOARD] User pressed key code: 258
+[Sat Jan 10 21:28:46 2026] [KEYBOARD] User pressed key code: 260
+[Sat Jan 10 21:28:47 2026] [PHYSICS] Pos: (14.75, 9.45), Vel: (-0.38, 0.28)
+[Sat Jan 10 21:28:47 2026] [KEYBOARD] User pressed key code: 258
+[Sat Jan 10 21:28:48 2026] [KEYBOARD] User pressed key code: 113
+[Sat Jan 10 21:28:48 2026] [KEYBOARD] Sent QUIT command. Exiting loop.
+[Sat Jan 10 21:28:48 2026] [DRONE] Exiting cleanly
+[Sat Jan 10 21:28:48 2026] [SERVER] Drone process disconnected (EPIPE). Stopping.
+[Sat Jan 10 21:28:48 2026] [KEYBOARD] Exiting cleanly
+[Sat Jan 10 21:28:48 2026] [MAIN] Stopping system...
+[Sat Jan 10 21:28:49 2026] [MAIN] Clean exit. Bye!

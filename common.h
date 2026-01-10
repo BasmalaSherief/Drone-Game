@@ -16,8 +16,8 @@
 
 // KEYBOARD INPUT (Input Process -> Drone Process) 
 typedef struct {
-    int force_x;    // -1, 0, 1
-    int force_y;    // -1, 0, 1
+    float force_x;    
+    float force_y;    
     char command;   // 's', 'r', 'q', ' '
 } InputMsg;
 

@@ -12,6 +12,9 @@
 
 /*  ASSIGNMENT1 CORRECTION:
         - Fixed the killing 
+    DIAGONAL MOVEMENT FIX:
+        - Now accepts normalized float forces from KeyboardManager
+        - Supports 8-direction movement
 */
 
 // GLOBAL FLAG FOR CLEANUP
@@ -126,7 +129,11 @@ int main()
         // HANDLE START/RESET
         if (bytesRead > 0) 
         {
-            if (msg.command == 's') game_active = 1;
+            if (msg.command == 's') 
+            {
+                game_active = 1;
+                log_msg("DRONE", "Game started");
+            }
             else if (msg.command == 'r') 
             {
                 DroneState reset_sig = drone;
@@ -137,6 +144,7 @@ int main()
                 drone.vx = 0.0; drone.vy = 0.0;
                 drone.force_x = 0.0; drone.force_y = 0.0;
                 game_active = 0; 
+                log_msg("DRONE", "Game reset");
             }
         } 
 
@@ -149,11 +157,19 @@ int main()
             drone.force_x += msg.force_x * THRUST_MULTIPLIER;
             drone.force_y += msg.force_y * THRUST_MULTIPLIER;
 
+            // Log force input for debugging diagonal movement
+            if (frame_count % 100 == 0 && (msg.force_x != 0.0 || msg.force_y != 0.0)) 
+            {
+                log_msg("DRONE", "Input force: Fx=%.3f, Fy=%.3f (normalized)", 
+                        msg.force_x, msg.force_y);
+            }
+
             // Brake
             if (msg.command == ' ') 
             {
                 drone.vx *= 0.5;
                 drone.vy *= 0.5;
+                log_msg("DRONE", "Brake applied");
             }
 
             // Repulsion & Integration
