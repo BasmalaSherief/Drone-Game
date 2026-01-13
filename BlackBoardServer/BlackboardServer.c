@@ -84,6 +84,9 @@ int main()
     if (mkfifo(fifoObsBB, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoObsBB"); exit(EXIT_FAILURE); }
     if (mkfifo(fifoBBTar, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBTar"); exit(EXIT_FAILURE); }
     if (mkfifo(fifoTarBB, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoTarBB"); exit(EXIT_FAILURE); }
+    
+    // INITIALIZE NETWORK
+    net_config = init_network_config("params.conf");
 
     // The next code block is from the assigment1 fixes
     // LAUNCH CHILDREN 
@@ -98,23 +101,24 @@ int main()
     pid_keyboard = spawn_process("konsole", arg_list_kb);
     log_msg("MAIN", "Launched Keyboard Manager with PID: %d", pid_keyboard);
 
-    // Launch Obstacle Process 
-    char *arg_list_obs[] = { "./obstacle_process", NULL };
-    pid_obst = spawn_process("./obstacle_process", arg_list_obs);
-    log_msg("MAIN", "Launched Obstacle Process with PID: %d", pid_obst);
+    // ONLY launch Generators and Watchdog if STANDALONE
+    if (net_config->mode == MODE_STANDALONE)
+    {
+        // Launch Obstacle Process 
+        char *arg_list_obs[] = { "./obstacle_process", NULL };
+        pid_obst = spawn_process("./obstacle_process", arg_list_obs);
+        log_msg("MAIN", "Launched Obstacle Process with PID: %d", pid_obst);
 
-    // Launch Target Process 
-    char *arg_list_tar[] = { "./target_process", NULL };
-    pid_targ = spawn_process("./target_process", arg_list_tar);
-    log_msg("MAIN", "Launched Target Process with PID: %d", pid_targ);
+        // Launch Target Process 
+        char *arg_list_tar[] = { "./target_process", NULL };
+        pid_targ = spawn_process("./target_process", arg_list_tar);
+        log_msg("MAIN", "Launched Target Process with PID: %d", pid_targ);
 
-    char *arg_list_wd[] = { "./watchdog", NULL };
-    pid_wd = spawn_process("./watchdog", arg_list_wd);
-    log_msg("MAIN", "Launched Watchdog with PID: %d", pid_wd);
+        char *arg_list_wd[] = { "./watchdog", NULL };
+        pid_wd = spawn_process("./watchdog", arg_list_wd);
+        log_msg("MAIN", "Launched Watchdog with PID: %d", pid_wd);
+    }
 
-    // INITIALIZE NETWORK
-    net_config = init_network_config("params.conf");
-    
     if (net_config->mode == MODE_SERVER) 
     {
         log_msg("SERVER", "Starting in SERVER mode");
@@ -142,6 +146,7 @@ int main()
         // Adjust window size to match server
         log_msg("CLIENT", "Server window size: %dx%d", width, height);
     }
+
     // NCURSES INIT
     init_console();
 
@@ -170,6 +175,9 @@ int main()
     DroneState incoming_drone_state;
     TargetPacket tar_packet;
 
+    // Variable to track the LOCAL drone position (for Client mode)
+    DroneState local_drone = world.drone;
+
     while(keep_running) 
     {
         // Send heartbeat to the watchdog
@@ -178,7 +186,7 @@ int main()
             kill(pid_wd, SIGUSR1);
         }
 
-        // READ INPUT 
+        // READ INPUT (From Local Drone Controller)
         ssize_t bytesRead = read(fd_DBB, &incoming_drone_state, sizeof(DroneState));
 
         if (bytesRead == -1) 
@@ -226,14 +234,24 @@ int main()
             }
             else
             {
-                world.drone = incoming_drone_state;
-                world.game_active = 1;                
+                // If Client: Store input in local_drone (to send to server)
+                if (net_config->mode == MODE_CLIENT)
+                {
+                    local_drone = incoming_drone_state;
+                    world.game_active = 1; // Client is active
+                }
+                // If Server/Standalone: Input controls the main world drone directly.
+                else
+                {
+                    world.drone = incoming_drone_state;
+                    world.game_active = 1;
+                }              
             }
-
         }
 
-        // LOGIC 
-        if (world.game_active) 
+        // CORE LOGIC BRANCHING
+        // --- STANDALONE ---
+        if (net_config->mode == MODE_STANDALONE &&world.game_active) 
         {
             // OBSTACLE SYNC
             // Send Drone position to Obstacle Process
@@ -266,6 +284,55 @@ int main()
                 attroff(A_BOLD | COLOR_PAIR(COLOR_TARGET));
                 refresh();
                 sleep(4);  
+                keep_running = 0;
+            }
+        }
+        // --- SERVER MODE ---
+        else if (net_config->mode == MODE_SERVER && net_config->connected)
+        {
+            // Send Main Drone Pos to Client
+            if (server_send_drone(net_config->socket_fd, world.drone.x, world.drone.y) < 0) 
+            {
+                log_msg("SERVER", "Network Error sending drone");
+                keep_running = 0;
+            }
+
+            // Receive Client's Drone (as an Obstacle)
+            float ox, oy;
+            if (server_receive_obstacle(net_config->socket_fd, &ox, &oy) < 0) 
+            {
+                log_msg("SERVER", "Network Error receiving obstacle");
+                keep_running = 0;
+            } 
+            else 
+            {
+                // Update Obstacle 0 to match Client position
+                world.obstacles[0].x = (int)ox;
+                world.obstacles[0].y = (int)oy;
+                world.obstacles[0].active = 1; // Make it visible
+            }
+        }
+
+        // --- CLIENT MODE ---
+        else if (net_config->mode == MODE_CLIENT && net_config->connected)
+        {
+            // Receive Main Drone Pos from Server (and update world)
+            float sx, sy;
+            if (client_receive_drone(net_config->socket_fd, &sx, &sy) < 0) 
+            {
+                log_msg("CLIENT", "Network Error receiving drone");
+                keep_running = 0;
+            } 
+            else 
+            {
+                world.drone.x = sx;
+                world.drone.y = sy;
+            }
+
+            // Send Local Drone (our input) to Server (as obstacle)
+            if (client_send_obstacle(net_config->socket_fd, local_drone.x, local_drone.y) < 0) 
+            {
+                log_msg("CLIENT", "Network Error sending obstacle");
                 keep_running = 0;
             }
         }

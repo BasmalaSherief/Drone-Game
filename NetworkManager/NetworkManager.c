@@ -202,3 +202,83 @@ int client_receive_size(int socket_fd, int *width, int *height) {
     
     return 0;
 }
+
+// Server: Send "drone x,y", wait for "dok"
+int server_send_drone(int socket_fd, float x, float y) 
+{
+    char msg[64];
+    snprintf(msg, sizeof(msg), "drone %.2f,%.2f", x, y);
+    if (send(socket_fd, msg, strlen(msg) + 1, 0) < 0) return -1;
+    
+    char response[16];
+    if (recv(socket_fd, response, sizeof(response), 0) <= 0) return -1;
+    
+    // Expect "dok"
+    if (strncmp(response, "dok", 3) != 0) return -1;
+    return 0;
+}
+
+// Client: Receive "drone x,y", send "dok"
+int client_receive_drone(int socket_fd, float *x, float *y) 
+{
+    char msg[64];
+    if (recv(socket_fd, msg, sizeof(msg), 0) <= 0) return -1;
+    
+    // Parse "drone x,y"
+    if (sscanf(msg, "drone %f,%f", x, y) != 2) return -1;
+    
+    char response[16] = "dok";
+    send(socket_fd, response, strlen(response) + 1, 0);
+    return 0;
+}
+
+// Server: Send "obst", wait for "x,y", send "pok"
+int server_receive_obstacle(int socket_fd, float *x, float *y) 
+{
+    // 1. Send Request "obst"
+    char req[16] = "obst";
+    if (send(socket_fd, req, strlen(req) + 1, 0) < 0) return -1;
+    
+    // 2. Receive Data "x,y"
+    char msg[64];
+    if (recv(socket_fd, msg, sizeof(msg), 0) <= 0) return -1;
+    if (sscanf(msg, "%f,%f", x, y) != 2) return -1;
+
+    // 3. Send Ack "pok"
+    char ack[16] = "pok";
+    send(socket_fd, ack, strlen(ack) + 1, 0);
+    return 0;
+}
+
+// Client: Receive "obst", send "x,y", wait for "pok"
+int client_send_obstacle(int socket_fd, float x, float y) 
+{
+    // 1. Receive Request "obst"
+    char msg[16];
+    if (recv(socket_fd, msg, sizeof(msg), 0) <= 0) return -1;
+    if (strncmp(msg, "obst", 4) != 0) return -1;
+
+    // 2. Send Data "x,y"
+    char resp[64];
+    snprintf(resp, sizeof(resp), "%.2f,%.2f", x, y);
+    if (send(socket_fd, resp, strlen(resp) + 1, 0) < 0) return -1;
+
+    // 3. Receive Ack "pok"
+    if (recv(socket_fd, msg, sizeof(msg), 0) <= 0) return -1;
+    if (strncmp(msg, "pok", 3) != 0) return -1;
+    
+    return 0;
+}
+
+int send_quit(int socket_fd)
+{
+    char msg[16] = "q";
+    send(socket_fd, msg, strlen(msg)+1, 0);
+    return 0;
+}
+
+void network_cleanup(NetworkConfig *config) 
+{
+    if (config->socket_fd != -1) close(config->socket_fd);
+    free(config);
+}
