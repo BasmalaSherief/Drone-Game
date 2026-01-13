@@ -123,27 +123,37 @@ int main()
     }
 
     log_msg("MAIN", "Opening pipes...");
-    // Non-blocking open for pipes 
+    // OPEN CORE PIPES (Used in ALL modes)
     int fd_DBB = open(fifoDBB, O_RDONLY | O_NONBLOCK);
-    if (fd_DBB == -1) { endwin(); perror("open read"); exit(1); }
+    if (fd_DBB == -1) { perror("open read fifoDBB"); exit(1); }
   
     int fd_BBD = open(fifoBBD, O_WRONLY); 
-    if (fd_BBD == -1) { endwin(); perror("open write BBDIS"); exit(1); }
+    if (fd_BBD == -1) { perror("open write fifoBBD"); exit(1); }
 
     int fd_BBDIS = open(fifoBBDIS, O_WRONLY);
-    if (fd_BBDIS == -1) { endwin(); perror("open write BBDIS"); exit(1); }
+    if (fd_BBDIS == -1) { perror("open write fifoBBDIS"); exit(1); }
 
-    int fd_BBObs = open(fifoBBObs, O_WRONLY );
-    if (fd_BBObs == -1) { endwin(); perror("open write BBObs"); exit(1); }
-  
-    int fd_ObsBB = open(fifoObsBB, O_RDONLY); 
-    if (fd_ObsBB == -1) { endwin(); perror("open read ObsBB"); exit(1); }
+    // OPEN GENERATOR PIPES (Only in STANDALONE mode)
+    // Initialize to -1 so we don't accidentally use them in Network mode
+    int fd_BBObs = -1;
+    int fd_ObsBB = -1;
+    int fd_BBTar = -1;
+    int fd_TarBB = -1;
 
-    int fd_BBTar = open(fifoBBTar, O_WRONLY );
-    if (fd_BBTar == -1) { endwin(); perror("open write BBTar"); exit(1); }
-  
-    int fd_TarBB = open(fifoTarBB, O_RDONLY); 
-    if (fd_TarBB == -1) { endwin(); perror("open read TarBB"); exit(1); }
+    if (net_config->mode == MODE_STANDALONE)
+    {
+        fd_BBObs = open(fifoBBObs, O_WRONLY);
+        if (fd_BBObs == -1) { perror("open write fifoBBObs"); exit(1); }
+    
+        fd_ObsBB = open(fifoObsBB, O_RDONLY); 
+        if (fd_ObsBB == -1) { perror("open read fifoObsBB"); exit(1); }
+
+        fd_BBTar = open(fifoBBTar, O_WRONLY);
+        if (fd_BBTar == -1) { perror("open write fifoBBTar"); exit(1); }
+    
+        fd_TarBB = open(fifoTarBB, O_RDONLY); 
+        if (fd_TarBB == -1) { perror("open read fifoTarBB"); exit(1); }
+    }
 
     log_msg("MAIN", "Pipes opened successfully.");
 
