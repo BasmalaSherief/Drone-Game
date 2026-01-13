@@ -55,17 +55,6 @@ int main()
     // Logging start of the main process to the log file
     log_msg("MAIN", "Process started with PID %d", getpid());
     srand(time(NULL));
-        
-    // INITIALIZE NETWORK
-    net_config = init_network_config("param.conf");
-
-    if (!net_config) 
-    {
-        fprintf(stderr, "Failed to load network config\n");
-        exit(1);
-    }
-    
-    log_msg("MAIN", "Running in mode: %d", net_config->mode);
 
     // DATA INIT 
     WorldState world;
@@ -82,134 +71,38 @@ int main()
     int targets_spawned_total = 0;
     int targets_collected_total = 0;
 
-    if (net_config->mode == MODE_SERVER) 
-    {
-        log_msg("SERVER", "Starting in SERVER mode - waiting for client...");
-        printf("\n[SERVER] Waiting for client connection on port %d...\n", net_config->port);
-        
-        if (network_server_init(net_config) < 0) 
-        {
-            fprintf(stderr, "Failed to initialize server\n");
-            exit(1);
-        }
-        
-        printf("[SERVER] Client connected! Starting handshake...\n");
-        
-        if (server_handshake(net_config->socket_fd) < 0) 
-        {
-            fprintf(stderr, "Handshake failed\n");
-            exit(1);
-        }
-        
-        if (server_send_size(net_config->socket_fd, MAP_WIDTH, MAP_HEIGHT) < 0) 
-        {
-            fprintf(stderr, "Failed to send size\n");
-            exit(1);
-        }
-        
-        log_msg("SERVER", "Network setup complete");
-        printf("[SERVER] Setup complete! Starting simulation...\n");
-        sleep(1);
-    }
-    else if (net_config->mode == MODE_CLIENT) 
-    {
-        log_msg("CLIENT", "Starting in CLIENT mode");
-        printf("\n[CLIENT] Connecting to %s:%d...\n", net_config->server_ip, net_config->port);
-        
-        if (network_client_init(net_config) < 0) 
-        {
-            fprintf(stderr, "Failed to connect to server\n");
-            exit(1);
-        }
-        
-        printf("[CLIENT] Connected! Starting handshake...\n");
-        
-        if (client_handshake(net_config->socket_fd) < 0) 
-        {
-            fprintf(stderr, "Handshake failed\n");
-            exit(1);
-        }
-        
-        int width, height;
-        if (client_receive_size(net_config->socket_fd, &width, &height) < 0) 
-        {
-            fprintf(stderr, "Failed to receive size\n");
-            exit(1);
-        }
-        
-        log_msg("CLIENT", "Server window size: %dx%d", width, height);
-        printf("[CLIENT] Setup complete! Starting simulation...\n");
-        sleep(1);
-    }
+    // PIPES + check for their errors
+    const char *fifoDBB = "/tmp/fifoDBB";   
+    const char *fifoBBD = "/tmp/fifoBBD";   
+    const char *fifoBBDIS = "/tmp/fifoBBDIS"; 
+    const char *fifoBBObs = "/tmp/fifoBBObs";   // Server -> Obs
+    const char *fifoObsBB = "/tmp/fifoObsBB"; // Obs -> Server
+    const char *fifoBBTar = "/tmp/fifoBBTar";   // Server -> Tar
+    const char *fifoTarBB = "/tmp/fifoTarBB"; // Tar -> Server
 
-    // Create pipes based on mode
-    const char *fifoDBB = "/tmp/fifoDBB";
-    const char *fifoBBD = "/tmp/fifoBBD";
-    const char *fifoBBDIS = "/tmp/fifoBBDIS";
-
-    // Always need these pipes
-    if (mkfifo(fifoDBB, 0666) == -1 && errno != EEXIST) 
-    { 
-        perror("mkfifo fifoDBB"); 
-        exit(1); 
-    }
-    if (mkfifo(fifoBBD, 0666) == -1 && errno != EEXIST) 
-    { 
-        perror("mkfifo fifoBBD"); 
-        exit(1); 
-    }
-    if (mkfifo(fifoBBDIS, 0666) == -1 && errno != EEXIST) 
-    { 
-        perror("mkfifo fifoBBDIS"); 
-        exit(1); 
-    }
-
-
-    // Only create generator pipes in STANDALONE mode
-    const char *fifoBBObs = "/tmp/fifoBBObs";
-    const char *fifoObsBB = "/tmp/fifoObsBB";
-    const char *fifoBBTar = "/tmp/fifoBBTar";
-    const char *fifoTarBB = "/tmp/fifoTarBB";
+    if (mkfifo(fifoDBB, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoDBB"); exit(EXIT_FAILURE); }
+    if (mkfifo(fifoBBD, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBD"); exit(EXIT_FAILURE); }
+    if (mkfifo(fifoBBDIS, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBDIS"); exit(EXIT_FAILURE); }
+    if (mkfifo(fifoBBObs, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBObs"); exit(EXIT_FAILURE); }
+    if (mkfifo(fifoObsBB, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoObsBB"); exit(EXIT_FAILURE); }
+    if (mkfifo(fifoBBTar, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBTar"); exit(EXIT_FAILURE); }
+    if (mkfifo(fifoTarBB, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoTarBB"); exit(EXIT_FAILURE); }
     
-    if (net_config->mode == MODE_STANDALONE) 
-    {
-        if (mkfifo(fifoBBObs, 0666) == -1 && errno != EEXIST) 
-        { 
-            perror("mkfifo fifoBBObs"); 
-            exit(1); 
-        }
-        if (mkfifo(fifoObsBB, 0666) == -1 && errno != EEXIST) 
-        { 
-            perror("mkfifo fifoObsBB"); 
-            exit(1); 
-        }
-        if (mkfifo(fifoBBTar, 0666) == -1 && errno != EEXIST) 
-        { 
-            perror("mkfifo fifoBBTar"); 
-            exit(1); 
-        }
-        if (mkfifo(fifoTarBB, 0666) == -1 && errno != EEXIST) 
-        { 
-            perror("mkfifo fifoTarBB"); 
-            exit(1); 
-        }
-    }
+    // INITIALIZE NETWORK
+    net_config = init_network_config("param.conf");
 
     // The next code block is from the assigment1 fixes
     // LAUNCH CHILDREN 
-    log_msg("MAIN", "Spawning child processes...");
     // Launch Drone
     char *arg_list_drone[] = { "./drone", NULL };
     pid_drone = spawn_process("./drone", arg_list_drone);
     log_msg("MAIN", "Launched Drone with PID: %d", pid_drone);
-    usleep(100000); // 100ms delay
 
     // Launch Keyboard
     // pass the keyboard executable as an argument (konsole -e ./keyboard)
     char *arg_list_kb[] = { "konsole", "-e", "./keyboard", NULL };
     pid_keyboard = spawn_process("konsole", arg_list_kb);
     log_msg("MAIN", "Launched Keyboard Manager with PID: %d", pid_keyboard);
-    usleep(100000); // 100ms delay
 
     // ONLY launch Generators and Watchdog if STANDALONE
     if (net_config->mode == MODE_STANDALONE)
@@ -229,84 +122,70 @@ int main()
         log_msg("MAIN", "Launched Watchdog with PID: %d", pid_wd);
     }
 
+    if (net_config->mode == MODE_SERVER) 
+    {
+        log_msg("SERVER", "Starting in SERVER mode");
+        // Initialize network
+        if (network_server_init(net_config) < 0) 
+        {
+            fprintf(stderr, "Failed to initialize server\n");
+            exit(1);
+        }
+        server_handshake(net_config->socket_fd);
+        server_send_size(net_config->socket_fd, MAP_WIDTH, MAP_HEIGHT);
+    }
+    
+    else if (net_config->mode == MODE_CLIENT) 
+    {
+        log_msg("CLIENT", "Starting in CLIENT mode");
+        // Connect to server
+        if (network_client_init(net_config) < 0) 
+        {
+            fprintf(stderr, "Failed to connect to server\n");
+            exit(1);
+        }
+        client_handshake(net_config->socket_fd);
+        int width, height;
+        client_receive_size(net_config->socket_fd, &width, &height);
+        // Adjust window size to match server
+        log_msg("CLIENT", "Server window size: %dx%d", width, height);
+    }
+
     // NCURSES INIT
     init_console();
 
-    // Open pipes - Always need these three
+    // Non-blocking open for pipes 
     int fd_DBB = open(fifoDBB, O_RDONLY | O_NONBLOCK);
-    if (fd_DBB == -1) 
-    { 
-        endwin(); 
-        perror("open fifoDBB"); 
-        exit(1); 
-    }
+    if (fd_DBB == -1) { endwin(); perror("open read"); exit(1); }
   
     int fd_BBD = open(fifoBBD, O_WRONLY); 
-    if (fd_BBD == -1) 
-    { 
-        endwin(); 
-        perror("open fifoBBD"); 
-        exit(1); 
-    }
+    if (fd_BBD == -1) { endwin(); perror("open write BBDIS"); exit(1); }
 
     int fd_BBDIS = open(fifoBBDIS, O_WRONLY);
-    if (fd_BBDIS == -1) 
-    { 
-        endwin(); 
-        perror("open fifoBBDIS"); 
-        exit(1); 
-    }
+    if (fd_BBDIS == -1) { endwin(); perror("open write BBDIS"); exit(1); }
 
-        // FIX #6: Only open generator pipes in standalone mode
-    int fd_BBObs = -1, fd_ObsBB = -1, fd_BBTar = -1, fd_TarBB = -1;
-    
-    if (net_config->mode == MODE_STANDALONE) 
-    {
-        fd_BBObs = open(fifoBBObs, O_WRONLY);
-        if (fd_BBObs == -1) 
-        { 
-            endwin(); 
-            perror("open fifoBBObs"); 
-            exit(1); 
-        }
-      
-        fd_ObsBB = open(fifoObsBB, O_RDONLY); 
-        if (fd_ObsBB == -1) 
-        { 
-            endwin(); 
-            perror("open fifoObsBB"); 
-            exit(1); 
-        }
+    int fd_BBObs = open(fifoBBObs, O_WRONLY );
+    if (fd_BBObs == -1) { endwin(); perror("open write BBObs"); exit(1); }
+  
+    int fd_ObsBB = open(fifoObsBB, O_RDONLY); 
+    if (fd_ObsBB == -1) { endwin(); perror("open read ObsBB"); exit(1); }
 
-        fd_BBTar = open(fifoBBTar, O_WRONLY);
-        if (fd_BBTar == -1) 
-        { 
-            endwin(); 
-            perror("open fifoBBTar"); 
-            exit(1); 
-        }
-      
-        fd_TarBB = open(fifoTarBB, O_RDONLY); 
-        if (fd_TarBB == -1) 
-        { 
-            endwin(); 
-            perror("open fifoTarBB"); 
-            exit(1); 
-        }
-    }
-
-    log_msg("MAIN", "All pipes opened successfully");
-
+    int fd_BBTar = open(fifoBBTar, O_WRONLY );
+    if (fd_BBTar == -1) { endwin(); perror("open write BBTar"); exit(1); }
+  
+    int fd_TarBB = open(fifoTarBB, O_RDONLY); 
+    if (fd_TarBB == -1) { endwin(); perror("open read TarBB"); exit(1); }
 
     DroneState incoming_drone_state;
     TargetPacket tar_packet;
+
     // Variable to track the LOCAL drone position (for Client mode)
     DroneState local_drone = world.drone;
 
     while(keep_running) 
     {
-        // Send heartbeat to the watchdog in the standalone mode 
-        if (net_config->mode == MODE_STANDALONE && pid_wd > 0) 
+        // Send heartbeat to the watchdog
+        if (pid_wd > 0) 
         {
             kill(pid_wd, SIGUSR1);
         }
@@ -415,48 +294,50 @@ int main()
         // --- SERVER MODE ---
         else if (net_config->mode == MODE_SERVER && net_config->connected)
         {
-            // Server sends its drone, receives client's as obstacle
+            // Send Main Drone Pos to Client
             if (server_send_drone(net_config->socket_fd, world.drone.x, world.drone.y) < 0) 
             {
-                log_msg("SERVER", "Network error - client disconnected");
+                log_msg("SERVER", "Network Error sending drone");
                 keep_running = 0;
-                continue;
             }
 
+            // Receive Client's Drone (as an Obstacle)
             float ox, oy;
             if (server_receive_obstacle(net_config->socket_fd, &ox, &oy) < 0) 
             {
-                log_msg("SERVER", "Network error - client disconnected");
+                log_msg("SERVER", "Network Error receiving obstacle");
                 keep_running = 0;
-                continue;
+            } 
+            else 
+            {
+                // Update Obstacle 0 to match Client position
+                world.obstacles[0].x = (int)ox;
+                world.obstacles[0].y = (int)oy;
+                world.obstacles[0].active = 1; // Make it visible
             }
-            
-            // Update obstacle slot 0 with client position
-            world.obstacles[0].x = (int)ox;
-            world.obstacles[0].y = (int)oy;
-            world.obstacles[0].active = 1;
         }
 
         // --- CLIENT MODE ---
         else if (net_config->mode == MODE_CLIENT && net_config->connected)
         {
-            // Client receives server's drone, sends own as obstacle
+            // Receive Main Drone Pos from Server (and update world)
             float sx, sy;
             if (client_receive_drone(net_config->socket_fd, &sx, &sy) < 0) 
             {
-                log_msg("CLIENT", "Network error - server disconnected");
+                log_msg("CLIENT", "Network Error receiving drone");
                 keep_running = 0;
-                continue;
+            } 
+            else 
+            {
+                world.drone.x = sx;
+                world.drone.y = sy;
             }
-            
-            world.drone.x = sx;
-            world.drone.y = sy;
 
+            // Send Local Drone (our input) to Server (as obstacle)
             if (client_send_obstacle(net_config->socket_fd, local_drone.x, local_drone.y) < 0) 
             {
-                log_msg("CLIENT", "Network error - server disconnected");
+                log_msg("CLIENT", "Network Error sending obstacle");
                 keep_running = 0;
-                continue;
             }
         }
 
@@ -480,18 +361,18 @@ int main()
         }
 
         // WRITING TO KEYBOARD DISPLAY
-        ssize_t bytesWritten = write(fd_BBD, world.obstacles, sizeof(world.obstacles));
-        if (bytesWritten == -1 && errno == EPIPE) 
+        ssize_t bytesWrittenBBDIS = write(fd_BBDIS, &world, sizeof(WorldState));
+        if (bytesWrittenBBDIS == -1) 
         {
-            log_msg("SERVER", "Drone disconnected");
-            keep_running = 0;
-        }
-
-        bytesWritten = write(fd_BBDIS, &world, sizeof(WorldState));
-        if (bytesWritten == -1 && errno == EPIPE) 
-        {
-            log_msg("SERVER", "Keyboard disconnected");
-            keep_running = 0;
+            if (errno == EPIPE) 
+            {
+                log_msg("SERVER", "Keyboard process disconnected (EPIPE). Stopping.");
+                keep_running = 0;
+            } 
+            else if (errno != EAGAIN) 
+            { 
+                log_msg("SERVER", "Error writing to Display Pipe: %s", strerror(errno));
+            }
         }
 
         usleep(30000); 
@@ -501,57 +382,54 @@ int main()
 
     log_msg("MAIN", "Stopping system...");
 
-    // Send network quit signal
+    // Send quit signal over network if connected
     if (net_config->connected && net_config->socket_fd != -1) 
     {
         send_quit(net_config->socket_fd);
-        close(net_config->socket_fd);
+        network_cleanup(net_config);
     }
 
     // Close pipes
-    if (fd_DBB != -1) close(fd_DBB);
-    if (fd_BBD != -1) close(fd_BBD);
-    if (fd_BBDIS != -1) close(fd_BBDIS);
-    
-    if (net_config->mode == MODE_STANDALONE) 
-    {
-        if (fd_BBObs != -1) close(fd_BBObs);
-        if (fd_ObsBB != -1) close(fd_ObsBB);
-        if (fd_BBTar != -1) close(fd_BBTar);
-        if (fd_TarBB != -1) close(fd_TarBB);
-    }
+    close(fd_DBB);
+    close(fd_BBD);
+    close(fd_BBDIS);
+    close(fd_BBObs);
+    close(fd_ObsBB);
+    close(fd_BBTar);
+    close(fd_TarBB);
 
-    // Terminate children
+    // Kill children using their PIDs
     if (pid_drone > 0) kill(pid_drone, SIGTERM);
     if (pid_keyboard > 0) kill(pid_keyboard, SIGTERM);
     if (pid_obst > 0) kill(pid_obst, SIGTERM);
     if (pid_targ > 0) kill(pid_targ, SIGTERM);
-    if (pid_wd > 0) kill(pid_wd, SIGTERM);
     
-    // Wait for cleanup
-    if (pid_drone > 0) waitpid(pid_drone, NULL, WNOHANG);
-    if (pid_keyboard > 0) waitpid(pid_keyboard, NULL, WNOHANG);
-    if (pid_obst > 0) waitpid(pid_obst, NULL, WNOHANG);
-    if (pid_targ > 0) waitpid(pid_targ, NULL, WNOHANG);
-    if (pid_wd > 0) waitpid(pid_wd, NULL, WNOHANG);
+    // Wait for them to finish to avoid zombies
+    waitpid(pid_drone, NULL, 0);
+    waitpid(pid_keyboard, NULL, 0);
+    waitpid(pid_obst, NULL, 0);
+    waitpid(pid_targ, NULL, 0);
 
-    endwin();
+    // Destroy Ncurses window
+    endwin();  
 
-    // Cleanup pipes
+    // Unlink pipes so they don't persist
     unlink(fifoDBB);
     unlink(fifoBBD);
     unlink(fifoBBDIS);
-    
-    if (net_config->mode == MODE_STANDALONE) 
-    {
-        unlink(fifoBBObs);
-        unlink(fifoObsBB);
-        unlink(fifoBBTar);
-        unlink(fifoTarBB);
-    }
+    unlink(fifoBBObs);
+    unlink(fifoObsBB);
+    unlink(fifoBBTar);
+    unlink(fifoTarBB);
 
-    if (net_config) free(net_config);
-    
-    log_msg("MAIN", "Clean exit");
+    // Force kill group to ensure terminal windows close
+    system("pkill -f drone");
+    system("pkill -f keyboard");
+    system("pkill -f obstacle_process");
+    system("pkill -f target_process");
+
+    // Logging end of the main process to the log file
+    log_msg("MAIN", "Clean exit. Bye!");
+
     return 0;
 }
