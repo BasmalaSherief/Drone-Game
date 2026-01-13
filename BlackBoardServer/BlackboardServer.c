@@ -49,6 +49,9 @@ int main()
     // Prevent crash or broken pipes
     signal(SIGPIPE, SIG_IGN);
 
+    // RUN STARTUP PROMPT
+    prompt_for_mode();
+
     // Logging start of the main process to the log file
     log_msg("MAIN", "Process started with PID %d", getpid());
     srand(time(NULL));
