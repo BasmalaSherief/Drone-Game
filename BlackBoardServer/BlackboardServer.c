@@ -28,11 +28,11 @@ volatile sig_atomic_t keep_running = 1;
 NetworkConfig *net_config = NULL;
 
 // Global PIDs to track children
-pid_t pid_drone;
-pid_t pid_keyboard;
-pid_t pid_obst;
-pid_t pid_targ;
-pid_t pid_wd;
+pid_t pid_drone = -1;
+pid_t pid_keyboard = -1;
+pid_t pid_obst = -1;
+pid_t pid_targ = -1;
+pid_t pid_wd = -1;
 
 void handle_signal(int sig) 
 {
@@ -89,7 +89,7 @@ int main()
     if (mkfifo(fifoTarBB, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoTarBB"); exit(EXIT_FAILURE); }
     
     // INITIALIZE NETWORK
-    net_config = init_network_config("params.conf");
+    net_config = init_network_config("param.conf");
 
     // The next code block is from the assigment1 fixes
     // LAUNCH CHILDREN 
@@ -122,37 +122,7 @@ int main()
         log_msg("MAIN", "Launched Watchdog with PID: %d", pid_wd);
     }
 
-    if (net_config->mode == MODE_SERVER) 
-    {
-        log_msg("SERVER", "Starting in SERVER mode");
-        // Initialize network
-        if (network_server_init(net_config) < 0) 
-        {
-            fprintf(stderr, "Failed to initialize server\n");
-            exit(1);
-        }
-        server_handshake(net_config->socket_fd);
-        server_send_size(net_config->socket_fd, MAP_WIDTH, MAP_HEIGHT);
-    }
-    else if (net_config->mode == MODE_CLIENT) 
-    {
-        log_msg("CLIENT", "Starting in CLIENT mode");
-        // Connect to server
-        if (network_client_init(net_config) < 0) 
-        {
-            fprintf(stderr, "Failed to connect to server\n");
-            exit(1);
-        }
-        client_handshake(net_config->socket_fd);
-        int width, height;
-        client_receive_size(net_config->socket_fd, &width, &height);
-        // Adjust window size to match server
-        log_msg("CLIENT", "Server window size: %dx%d", width, height);
-    }
-
-    // NCURSES INIT
-    init_console();
-
+    log_msg("MAIN", "Opening pipes...");
     // Non-blocking open for pipes 
     int fd_DBB = open(fifoDBB, O_RDONLY | O_NONBLOCK);
     if (fd_DBB == -1) { endwin(); perror("open read"); exit(1); }
@@ -174,6 +144,40 @@ int main()
   
     int fd_TarBB = open(fifoTarBB, O_RDONLY); 
     if (fd_TarBB == -1) { endwin(); perror("open read TarBB"); exit(1); }
+
+    log_msg("MAIN", "Pipes opened successfully.");
+
+    if (net_config->mode == MODE_SERVER) 
+    {
+        log_msg("SERVER", "Starting in SERVER mode");
+        // Initialize network
+        if (network_server_init(net_config) < 0) 
+        {
+            fprintf(stderr, "Failed to initialize server\n");
+            exit(1);
+        }
+        server_handshake(net_config->socket_fd);
+        server_send_size(net_config->socket_fd, MAP_WIDTH, MAP_HEIGHT);
+    }
+    
+    else if (net_config->mode == MODE_CLIENT) 
+    {
+        log_msg("CLIENT", "Starting in CLIENT mode");
+        // Connect to server
+        if (network_client_init(net_config) < 0) 
+        {
+            fprintf(stderr, "Failed to connect to server\n");
+            exit(1);
+        }
+        client_handshake(net_config->socket_fd);
+        int width, height;
+        client_receive_size(net_config->socket_fd, &width, &height);
+        // Adjust window size to match server
+        log_msg("CLIENT", "Server window size: %dx%d", width, height);
+    }
+
+    // NCURSES INIT
+    init_console();
 
     DroneState incoming_drone_state;
     TargetPacket tar_packet;
@@ -380,7 +384,6 @@ int main()
     // CLEANUP
 
     log_msg("MAIN", "Stopping system...");
-
 
     // Close pipes
     close(fd_DBB);

@@ -17,7 +17,7 @@
 void prompt_for_mode() 
 {
     int choice;
-    char ip[32] = "127.0.0.1";
+    char ip[32];
     char line[256];
     
     printf("\n====================================\n");
@@ -38,7 +38,7 @@ void prompt_for_mode()
     // If Client, ask for IP
     if (choice == 3) 
     {
-        printf("Enter Server IP Address (default 127.0.0.1): ");
+        printf("Enter Server IP Address: ");
         char input[100];
         if (fgets(input, sizeof(input), stdin)) 
         {

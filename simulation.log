@@ -1,0 +1,16 @@
+[Tue Jan 13 16:20:22 2026] [MAIN] Process started with PID 19392
+[Tue Jan 13 16:20:22 2026] [NETWORK] Mode: 2, IP: 10.149.203.156, Port: 5555
+[Tue Jan 13 16:20:22 2026] [MAIN] Launched Drone with PID: 19483
+[Tue Jan 13 16:20:22 2026] [MAIN] Launched Keyboard Manager with PID: 19484
+[Tue Jan 13 16:20:22 2026] [MAIN] Opening pipes...
+[Tue Jan 13 16:20:22 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Tue Jan 13 16:20:25 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Tue Jan 13 16:20:28 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Tue Jan 13 16:20:31 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Tue Jan 13 16:20:34 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Tue Jan 13 16:20:37 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Tue Jan 13 16:20:40 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Tue Jan 13 16:20:43 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Tue Jan 13 16:20:46 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Tue Jan 13 16:20:49 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Tue Jan 13 16:20:50 2026] [DRONE] Exiting cleanly
