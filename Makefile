@@ -4,7 +4,7 @@ CFLAGS = -I. -Wall
 LIBS = -lncurses -lm
 
 # Targets
-all: server drone keyboard obstacle_process target_process watchdog
+all: server drone keyboard obstacle_process target_process watchdog network_process
 
 # ----------------------------
 # 1. SHARED MODULES (Functions)
