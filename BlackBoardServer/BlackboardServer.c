@@ -113,9 +113,21 @@ int main()
 
     // Launch Keyboard
     // pass the keyboard executable as an argument (konsole -e ./keyboard)
-    char *arg_list_kb[] = { "konsole", "-e", "./keyboard", NULL };
-    pid_keyboard = spawn_process("konsole", arg_list_kb);
-    log_msg("MAIN", "Launched Keyboard Manager with PID: %d", pid_keyboard);
+    if (operation_mode == 0) 
+    {
+        // STANDALONE: Use konsole for separate keyboard window
+        char *arg_list_kb[] = { "konsole", "-e", "./keyboard", NULL };
+        pid_keyboard = spawn_process("konsole", arg_list_kb);
+        log_msg("MAIN", "Launched Keyboard Manager with PID: %d", pid_keyboard);
+    } 
+    else 
+    {
+        // NETWORK MODE: Run keyboard without GUI wrapper
+        // The main BlackboardServer ncurses window will show everything
+        char *arg_list_kb[] = { "./keyboard", NULL };
+        pid_keyboard = spawn_process("./keyboard", arg_list_kb);
+        log_msg("MAIN", "Launched Keyboard Manager (no separate window) with PID: %d", pid_keyboard);
+    }
 
     // CONDITIONALLY launch Generators and Watchdog
     // Server and client turn off the obstacle and target generators and the watchdog

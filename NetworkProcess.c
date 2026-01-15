@@ -65,8 +65,8 @@ int main(int argc, char *argv[])
     const char *fifoBBObs = "/tmp/fifoBBObs"; // Read local drone
     const char *fifoObsBB = "/tmp/fifoObsBB"; // Write remote obstacle
 
-    int pipe_rx = open(fifoBBObs, O_RDONLY | O_NONBLOCK);
-    int pipe_tx = open(fifoObsBB, O_WRONLY | O_NONBLOCK);
+    int pipe_rx = open(fifoBBObs, O_RDONLY );
+    int pipe_tx = open(fifoObsBB, O_WRONLY );
 
     if (pipe_rx < 0 || pipe_tx < 0) 
     {
