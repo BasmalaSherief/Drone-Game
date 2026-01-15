@@ -42,7 +42,6 @@ read -p "Enter choice [1-3]: " choice
 # No need to edit C code or config files manually!
 
 echo "# Auto-generated config by run.sh" > param.conf
-echo "PORT=5555" >> param.conf
 
 if [ "$choice" == "2" ]; then
     # --- SERVER MODE ---
@@ -50,7 +49,7 @@ if [ "$choice" == "2" ]; then
     # Server binds to 0.0.0.0 (all interfaces), so strict IP in config doesn't matter for binding,
     # but we can save it for reference.
     echo "SERVER_IP=0.0.0.0" >> param.conf
-    echo "[*] Starting as SERVER on Port 5555..."
+    echo "[*] Starting as SERVER..."
 
 elif [ "$choice" == "3" ]; then
     # --- CLIENT MODE ---
@@ -58,6 +57,7 @@ elif [ "$choice" == "3" ]; then
     
     # Ask for the Server's IP
     read -p "Enter Server IP Address (e.g., 192.168.1.X): " user_ip
+    read -p "Enter Server Port: " user_port
     
     # Validation: If user presses enter without typing, default to localhost
     if [ -z "$user_ip" ]; then
@@ -65,6 +65,7 @@ elif [ "$choice" == "3" ]; then
     fi
     
     echo "SERVER_IP=$user_ip" >> param.conf
+    echo "PORT=$user_port" >> param.conf
     echo "[*] Configuring Client to connect to $user_ip..."
 
 else

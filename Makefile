@@ -52,5 +52,6 @@ network_process: NetworkProcess.c common.o
 
 # Clean up
 clean:
-	rm -f server drone keyboard obstacle_process target_process watchdog *.o
+	rm -f server drone keyboard obstacle_process target_process watchdog network_process *.o
+	rm -f simulation.log
 	rm -f /tmp/fifo*

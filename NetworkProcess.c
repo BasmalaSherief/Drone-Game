@@ -124,7 +124,7 @@ int main(int argc, char *argv[])
         
         recv_line(sock, buf, 256); // Expect "size w h"
         // (Optional: Parse size and resize window if needed)
-        send_msg(sock, "sok size");
+        send_msg(sock, "sok");
     }
 
     printf("[Network] Connection Established. Starting Game Loop.\n");
