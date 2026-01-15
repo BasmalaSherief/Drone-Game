@@ -11,11 +11,6 @@
 #include <errno.h>
 #include "common.h" 
 
-/* NetworkProcess.c - Handlers Network Communication
-   - Replaces printf with log_msg to avoid breaking Ncurses.
-   - Implements strict handshake protocol (size w,h -> sok size w,h).
-*/
-
 // --- Coordinate Conversion ---
 float to_virtual_y(float y) { return (float)(MAP_HEIGHT - 1) - y; }
 float to_local_y(float y) { return (float)(MAP_HEIGHT - 1) - y; }
@@ -115,9 +110,8 @@ int main(int argc, char *argv[])
         recv_line(sock, buf, 256); 
         if (strcmp(buf, "ook") != 0) log_msg("NETWORK", "Warning: Handshake 'ook' mismatch. Got: %s", buf);
 
-        // 3. Send "size w h"
-        // PDF Spec requires sending dimensions. Friend's code used space separator.
-        send_msg(sock, "size %d %d", MAP_WIDTH, MAP_HEIGHT);
+        // 3. Send "size w, h" (Added comma as per PDF)
+        send_msg(sock, "size %d, %d", MAP_WIDTH, MAP_HEIGHT);
         
         // 4. Receive "sok size ..."
         recv_line(sock, buf, 256); 
@@ -150,14 +144,32 @@ int main(int argc, char *argv[])
         // 2. Send "ook"
         send_msg(sock, "ook");
         
-        // 3. Receive "size w h"
-        recv_line(sock, buf, 256); // buf contains "size 80 24"
+        // 3. Receive "size w, h"
+        recv_line(sock, buf, 256); // buf contains "size 80, 24"
         log_msg("NETWORK", "Server Window: %s", buf);
-        
+
+        // [FIX] Parse Dimensions (Handle comma or space)
+        int w = MAP_WIDTH; 
+        int h = MAP_HEIGHT;
+        if (sscanf(buf, "size %d, %d", &w, &h) != 2) {
+             sscanf(buf, "size %d %d", &w, &h);
+        }
+
         // 4. Send "sok size ..."
         char ack_msg[512];
         snprintf(ack_msg, sizeof(ack_msg), "sok %s", buf); 
         send_msg(sock, ack_msg);
+
+        // INTERNAL: Send Resize Command to Blackboard Server
+        // We abuse the Obstacle structure to pass the config: x=width, y=height, active=99
+        Obstacle config_pkt[MAX_OBSTACLES];
+        memset(config_pkt, 0, sizeof(config_pkt));
+        config_pkt[0].x = w;
+        config_pkt[0].y = h;
+        config_pkt[0].active = 99; // 99 = Special Resize Flag
+        write(pipe_tx, config_pkt, sizeof(config_pkt));
+        
+        log_msg("NETWORK", "Sent resize command (%dx%d) to Blackboard.", w, h);
     }
 
     log_msg("NETWORK", "Starting Game Loop.");
@@ -175,7 +187,6 @@ int main(int argc, char *argv[])
             // keep last valid drone state
         }
         
-
         if (mode == 1) 
         { // SERVER PROTOCOL LOOP
             // Send Drone

@@ -188,6 +188,34 @@ int main()
     // NCURSES INIT
     init_console();
 
+    // CLIENT MODE WINDOW RESIZING
+    if (operation_mode == 2) 
+    {
+        log_msg("MAIN", "Waiting for Server Handshake (Window Size)...");
+        // This read acts as a synchronization barrier. 
+        // We wait for NetworkProcess to finish handshake and send dimensions.
+        Obstacle init_obs[MAX_OBSTACLES];
+        ssize_t r = read(fd_ObsBB, init_obs, sizeof(init_obs));
+        
+        // Check for the special resize flag (99) set in NetworkProcess.c
+        if (r > 0 && init_obs[0].active == 99) 
+        {
+            int w = init_obs[0].x;
+            int h = init_obs[0].y;
+            
+            // Resize Ncurses Window
+            resizeterm(h, w); 
+            wresize(stdscr, h, w);
+            erase();
+            refresh();
+            log_msg("MAIN", "Handshake complete. Resized window to %dx%d.", w, h);
+        }
+        else 
+        {
+            log_msg("MAIN", "Warning: Did not receive valid resize packet from NetworkProcess.");
+        }
+    }
+
     DroneState incoming_drone_state;
     TargetPacket tar_packet;
 
@@ -346,6 +374,7 @@ int main()
     system("pkill -f keyboard");
     system("pkill -f obstacle_process");
     system("pkill -f target_process");
+    system("pkill -f network_process");
 
     // Logging end of the main process to the log file
     log_msg("MAIN", "Clean exit. Bye!");
