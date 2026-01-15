@@ -11,7 +11,6 @@
 #include <errno.h>
 #include <signal.h>
 #include "Blackboard.h"
-#include "../NetworkManager/NetworkManager.h"
 #include "../common.h"
 
 /*  ASSIGNMENT1 CORRECTION:
@@ -24,8 +23,7 @@
 // GLOBAL FLAG FOR CLEANUP
 volatile sig_atomic_t keep_running = 1;
 
-// Global network context 
-NetworkContext net_ctx;
+// Operation Mode
 int operation_mode = 0; // 0=Standalone, 1=Server, 2=Client
 
 // Global PIDs to track children
@@ -54,11 +52,11 @@ int main()
     log_msg("MAIN", "Process started with PID %d", getpid());
     srand(time(NULL));
 
-    // NETWORK SETUP CONFIGURATION
-    // Read 'param.conf' here to set operation_mode and IP
+    // CONFIGURATION
+    // Read 'param.conf' to set operation_mode, IP, and Port
     FILE *f = fopen("param.conf", "r");
     char server_ip[32] = "127.0.0.1";
-    int port = 5555; // Default
+    int port = 5555; 
 
     if (f) 
     {
@@ -68,8 +66,6 @@ int main()
             if (strstr(line, "MODE=server")) operation_mode = 1;
             if (strstr(line, "MODE=client")) operation_mode = 2;
             if (strstr(line, "SERVER_IP=")) sscanf(line, "SERVER_IP=%s", server_ip);
-            
-            // Read the port from the file
             if (strstr(line, "PORT=")) sscanf(line, "PORT=%d", &port);
         }
         fclose(f);
@@ -139,9 +135,20 @@ int main()
         pid_wd = spawn_process("./watchdog", arg_list_wd);
         log_msg("MAIN", "Launched Watchdog with PID: %d", pid_wd);
     }
-    else
+    else // NETWORK MODE (SERVER OR CLIENT)
     {
-        log_msg("MAIN", "Network Mode: Generators and Watchdog disabled.");
+        // It uses the same pipes as the obstacle generator!   
+        char mode_str[10];
+        char port_str[10];
+        sprintf(mode_str, "%d", operation_mode); // "1" or "2"
+        sprintf(port_str, "%d", port);
+
+        // Arguments: ./network_process <mode> <port> <ip>
+        char *arg_list_net[] = { "./network_process", mode_str, port_str, server_ip, NULL };
+        
+        // We reuse pid_obst to track it since it fills the "obstacle" role
+        pid_obst = spawn_process("./network_process", arg_list_net);
+        log_msg("MAIN", "Launched Network Process with PID: %d (IP: %s)", pid_obst, server_ip);
     }
 
     // Non-blocking open for pipes 
@@ -165,48 +172,12 @@ int main()
   
     int fd_TarBB = open(fifoTarBB, O_RDONLY); 
     if (fd_TarBB == -1) { endwin(); perror("open read TarBB"); exit(1); }
-
-    // NETWORK INITIALIZATION & HANDSHAKE 
-    if (operation_mode != 0) 
-    {
-        int is_server = (operation_mode == 1);
-        if (network_init(&net_ctx, server_ip, port, is_server) < 0) 
-        {
-            log_msg("SERVER", "CRITICAL ERROR: Network Init Failed (Check Port/IP)");
-            keep_running = 0;
-        }
-
-        // Protocol Step 1: Handshake "ok" <-> "ook" 
-        if (protocol_handshake(&net_ctx) < 0) 
-        {
-            log_msg("SERVER", "CRITICAL ERROR: Handshake Failed");
-            keep_running = 0;
-        }
-
-        // Protocol Step 2: Window Size Exchange 
-        int w = MAP_WIDTH, h = MAP_HEIGHT;
-        if (protocol_exchange_window_size(&net_ctx, &w, &h) < 0) 
-        {
-            fprintf(stderr, "Size Exchange Failed\n");
-            keep_running = 0;
-        }
-        // If Client, update our map size to match server
-        if (!is_server) 
-        {
-            // Note: In a real app you might need to resize the window here
-            log_msg("NETWORK", "Synced Map Size: %dx%d", w, h);
-        }
-    }
-
+    
     // NCURSES INIT
     init_console();
 
     DroneState incoming_drone_state;
     TargetPacket tar_packet;
-
-    // Position containers for Network Logic
-    Point2D local_pos = {0, 0};
-    Point2D remote_pos = {0, 0};
 
     while(keep_running) 
     {
@@ -262,66 +233,27 @@ int main()
 
                 continue; 
             }
-
-            // In Server/Standalone mode, local input moves the main drone
-            if (operation_mode == 0 || operation_mode == 1) 
-            {
-                world.drone = incoming_drone_state;
-            }
-            // In Client mode, we just store the input to send to server later
-            else if (operation_mode == 2) 
-            {
-                // Client drone is "local_pos", but main display "world.drone" comes from server
-                local_pos.x = incoming_drone_state.x;
-                local_pos.y = incoming_drone_state.y;
-            }
+            // Update Blackboard State
+            world.drone = incoming_drone_state;
         }
 
         // CORE LOGIC
-        if (operation_mode == 0) // STANDALONE
+        write(fd_BBObs, &world.drone, sizeof(DroneState));
+        read(fd_ObsBB, world.obstacles, sizeof(world.obstacles));
+
+        // TARGETS (Standalone Only)
+        if (operation_mode == 0) 
         {
-            // (Original logic for Obstacles/Targets...)
-            write(fd_BBObs, &world.drone, sizeof(DroneState));
-            read(fd_ObsBB, world.obstacles, sizeof(world.obstacles));
-            
             write(fd_BBTar, &world.drone, sizeof(DroneState));
             read(fd_TarBB, &tar_packet, sizeof(TargetPacket));
             memcpy(world.targets, tar_packet.targets, sizeof(world.targets));
             world.score += tar_packet.score_increment;
         }
-        else // NETWORK MODE (SERVER OR CLIENT)
+        else 
         {
-            // Prepare local position for network transmission
-            if (operation_mode == 1) 
-            { // SERVER
-                local_pos.x = world.drone.x;
-                local_pos.y = world.drone.y;
-            } 
-            // Client local_pos was set above in input reading
-            // PROTOCOL EXCHANGE
-            // This function handles the virtual coordinate conversion internally
-            int status = protocol_exchange_positions(&net_ctx, &local_pos, &remote_pos, MAP_HEIGHT);
-            
-            if (status == -2) // Quit signal received
-            { 
-                keep_running = 0;
-            } 
-            else if (status == 0) 
-            {
-                if (operation_mode == 1) // SERVER
-                { 
-                    // Remote pos is Client Drone -> Treat as Obstacle 0 
-                    world.obstacles[0].x = remote_pos.x;
-                    world.obstacles[0].y = remote_pos.y;
-                    world.obstacles[0].active = 1;
-                } 
-                else // CLIENT
-                { 
-                    // Remote pos is Server Drone -> Update main display
-                    world.drone.x = remote_pos.x;
-                    world.drone.y = remote_pos.y;
-                }
-            }
+            // Network mode: No targets required by assignment spec
+            // Ensure they remain inactive so they don't get drawn
+            for(int i=0; i<MAX_TARGETS; i++) world.targets[i].active = 0;
         }
 
         // DISPLAY
@@ -362,15 +294,7 @@ int main()
     }
 
     // CLEANUP
-
     log_msg("MAIN", "Stopping system...");
-
-    // Network Cleanup
-    if (operation_mode != 0) 
-    {
-        protocol_send_quit(&net_ctx);
-        network_close(&net_ctx);
-    }
 
     // Close pipes
     close(fd_DBB);
