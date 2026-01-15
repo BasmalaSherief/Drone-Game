@@ -66,7 +66,7 @@ int main(int argc, char *argv[])
     const char *fifoObsBB = "/tmp/fifoObsBB"; // Write remote obstacle
 
     int pipe_rx = open(fifoBBObs, O_RDONLY | O_NONBLOCK);
-    int pipe_tx = open(fifoObsBB, O_WRONLY);
+    int pipe_tx = open(fifoObsBB, O_WRONLY | O_NONBLOCK);
 
     if (pipe_rx < 0 || pipe_tx < 0) 
     {
@@ -154,10 +154,9 @@ int main(int argc, char *argv[])
         recv_line(sock, buf, 256); // buf contains "size 80 24"
         log_msg("NETWORK", "Server Window: %s", buf);
         
-        // 4. Send "sok size ..." (Strict Echo)
-        // We construct the ack string based on what we received
-        char ack_msg[256];
-        snprintf(ack_msg, sizeof(ack_msg), "sok %s", buf); // "sok size 80 24"
+        // 4. Send "sok size ..."
+        char ack_msg[512];
+        snprintf(ack_msg, sizeof(ack_msg), "sok %s", buf); 
         send_msg(sock, ack_msg);
     }
 
@@ -171,7 +170,11 @@ int main(int argc, char *argv[])
     while(1) 
     {
         // 1. Read Local Drone Position (Drain Pipe)
-        while(read(pipe_rx, &local_drone, sizeof(DroneState)) > 0);
+        ssize_t r;
+        while ((r = read(pipe_rx, &local_drone, sizeof(DroneState))) > 0) {
+            // keep last valid drone state
+        }
+        
 
         if (mode == 1) 
         { // SERVER PROTOCOL LOOP
