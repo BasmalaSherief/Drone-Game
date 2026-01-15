@@ -11,17 +11,16 @@
 #include <errno.h>
 #include "common.h" 
 
-/* We reuse the Named Pipes usually meant for the Obstacle Generator.
-   - Reads: Local Drone Position (from fifoBBObs)
-   - Writes: Remote Drone Position as an Obstacle (to fifoObsBB)
+/* NetworkProcess.c - Handlers Network Communication
+   - Replaces printf with log_msg to avoid breaking Ncurses.
+   - Implements strict handshake protocol (size w,h -> sok size w,h).
 */
 
-// Coordinate Conversion 
-// Virtual System: Origin Bottom-Left. Ncurses: Top-Left.
+// --- Coordinate Conversion ---
 float to_virtual_y(float y) { return (float)(MAP_HEIGHT - 1) - y; }
 float to_local_y(float y) { return (float)(MAP_HEIGHT - 1) - y; }
 
-// Helper Functions 
+// --- Helper Functions ---
 int send_msg(int sock, const char *fmt, ...) 
 {
     char buf[256];
@@ -37,7 +36,8 @@ int send_msg(int sock, const char *fmt, ...)
 int recv_line(int sock, char *buf, int size) 
 {
     int i = 0; char c;
-    while (i < size - 1) {
+    while (i < size - 1) 
+    {
         if (read(sock, &c, 1) <= 0) return -1;
         if (c == '\n') break;
         buf[i++] = c;
@@ -48,9 +48,12 @@ int recv_line(int sock, char *buf, int size)
 
 int main(int argc, char *argv[]) 
 {
+    // Log startup
+    log_msg("NETWORK", "Process started.");
+
     if (argc < 4) 
     {
-        fprintf(stderr, "Usage: %s <mode> <port> <ip>\n", argv[0]);
+        log_msg("NETWORK", "Error: Missing arguments.");
         return 1;
     }
 
@@ -59,7 +62,6 @@ int main(int argc, char *argv[])
     char *ip = argv[3];
 
     // --- 1. SETUP NAMED PIPES ---
-    // We use the existing pipes defined in your architecture
     const char *fifoBBObs = "/tmp/fifoBBObs"; // Read local drone
     const char *fifoObsBB = "/tmp/fifoObsBB"; // Write remote obstacle
 
@@ -68,7 +70,7 @@ int main(int argc, char *argv[])
 
     if (pipe_rx < 0 || pipe_tx < 0) 
     {
-        perror("NetworkProcess: Failed to open pipes");
+        log_msg("NETWORK", "Error: Failed to open pipes.");
         return 1;
     }
 
@@ -78,71 +80,98 @@ int main(int argc, char *argv[])
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
 
-    printf("[Network] Initializing as %s...\n", (mode == 1) ? "SERVER" : "CLIENT");
+    log_msg("NETWORK", "Initializing as %s on port %d...", (mode == 1) ? "SERVER" : "CLIENT", port);
 
     if (mode == 1) 
-    { // SERVER
+    { // SERVER MODE
         addr.sin_addr.s_addr = INADDR_ANY;
         int opt = 1;
         setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
         
         if (bind(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) 
         {
-            perror("Bind failed"); return 1;
+            log_msg("NETWORK", "Error: Bind failed.");
+            return 1;
         }
         listen(sock, 1);
         
-        printf("[Network] Waiting for client...\n");
+        log_msg("NETWORK", "Waiting for client connection...");
         int client_sock = accept(sock, NULL, NULL);
+        if (client_sock < 0) {
+            log_msg("NETWORK", "Error: Accept failed.");
+            return 1;
+        }
+        
         close(sock); // Close listener
         sock = client_sock; // Use client connection
+        log_msg("NETWORK", "Client connected.");
 
         // --- HANDSHAKE (Server side) ---
+        // 1. Send "ok"
         send_msg(sock, "ok");
-        char buf[256]; recv_line(sock, buf, 256); // Expect "ook"
-        if (strcmp(buf, "ook") != 0) fprintf(stderr, "Handshake Error: Expected ook, got %s\n", buf);
+        
+        // 2. Receive "ook"
+        char buf[256]; 
+        recv_line(sock, buf, 256); 
+        if (strcmp(buf, "ook") != 0) log_msg("NETWORK", "Warning: Handshake 'ook' mismatch. Got: %s", buf);
 
+        // 3. Send "size w h"
+        // PDF Spec requires sending dimensions. Friend's code used space separator.
         send_msg(sock, "size %d %d", MAP_WIDTH, MAP_HEIGHT);
-        recv_line(sock, buf, 256); // Expect "sok <size>"
+        
+        // 4. Receive "sok size ..."
+        recv_line(sock, buf, 256); 
+        log_msg("NETWORK", "Handshake complete. Received ack: %s", buf);
 
     } 
     else 
-    { // CLIENT
+    { // CLIENT MODE
         struct hostent *he = gethostbyname(ip);
-        if (!he) { fprintf(stderr, "Invalid IP\n"); return 1; }
+        if (!he) 
+        { 
+            log_msg("NETWORK", "Error: Invalid IP address."); 
+            return 1; 
+        }
         memcpy(&addr.sin_addr, he->h_addr_list[0], he->h_length);
         
-        printf("[Network] Connecting to %s...\n", ip);
+        log_msg("NETWORK", "Connecting to %s...", ip);
         while(connect(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) 
         {
             sleep(1); // Retry
         }
+        log_msg("NETWORK", "Connected to Server.");
 
         // --- HANDSHAKE (Client side) ---
-        char buf[256]; recv_line(sock, buf, 256); // Expect "ok"
+        char buf[256]; 
+        
+        // 1. Receive "ok"
+        recv_line(sock, buf, 256); 
+        
+        // 2. Send "ook"
         send_msg(sock, "ook");
         
-        recv_line(sock, buf, 256); // Expect "size w h"
-        // (Optional: Parse size and resize window if needed)
-        send_msg(sock, "sok");
+        // 3. Receive "size w h"
+        recv_line(sock, buf, 256); // buf contains "size 80 24"
+        log_msg("NETWORK", "Server Window: %s", buf);
+        
+        // 4. Send "sok size ..." (Strict Echo)
+        // We construct the ack string based on what we received
+        char ack_msg[256];
+        snprintf(ack_msg, sizeof(ack_msg), "sok %s", buf); // "sok size 80 24"
+        send_msg(sock, ack_msg);
     }
 
-    printf("[Network] Connection Established. Starting Game Loop.\n");
+    log_msg("NETWORK", "Starting Game Loop.");
 
     // --- 3. GAME LOOP ---
     DroneState local_drone = {0};
-    Obstacle obstacles[MAX_OBSTACLES]; // Your obstacle array format
+    Obstacle obstacles[MAX_OBSTACLES]; 
     char buf[256];
 
     while(1) 
     {
-        // 1. Read Local Drone Position from Pipe
-        // We loop to drain the pipe and get the *latest* position (Friend's logic)
-        int got_data = 0;
-        while(read(pipe_rx, &local_drone, sizeof(DroneState)) > 0) 
-        {
-            got_data = 1;
-        }
+        // 1. Read Local Drone Position (Drain Pipe)
+        while(read(pipe_rx, &local_drone, sizeof(DroneState)) > 0);
 
         if (mode == 1) 
         { // SERVER PROTOCOL LOOP
@@ -155,40 +184,38 @@ int main(int argc, char *argv[])
             send_msg(sock, "obst");
             recv_line(sock, buf, 256); // Receive "x y"
             
-            float rx, ry; sscanf(buf, "%f %f", &rx, &ry);
+            float rx, ry; 
+            sscanf(buf, "%f %f", &rx, &ry);
             
             send_msg(sock, "pok"); // Acknowledge
 
-            // Write to Blackboard Pipe
-            // We package the single remote drone as obstacles[0]
+            // Update Blackboard
             for(int i=0; i<MAX_OBSTACLES; i++) obstacles[i].active = 0;
-            
             obstacles[0].x = (int)rx;
             obstacles[0].y = (int)to_local_y(ry);
-            obstacles[0].active = 1; // It's alive!
+            obstacles[0].active = 1; 
             
             write(pipe_tx, obstacles, sizeof(obstacles));
-
         } 
         else 
         { // CLIENT PROTOCOL LOOP
             recv_line(sock, buf, 256); 
             
             if (strcmp(buf, "q") == 0) 
-            { // Quit Signal
+            {
                 send_msg(sock, "qok");
+                log_msg("NETWORK", "Server requested quit.");
                 break;
             }
             
             if (strcmp(buf, "drone") == 0) 
             {
-                // Receive Server Drone
                 recv_line(sock, buf, 256); 
-                float rx, ry; sscanf(buf, "%f %f", &rx, &ry);
+                float rx, ry; 
+                sscanf(buf, "%f %f", &rx, &ry);
                 
                 send_msg(sock, "dok");
 
-                // Update local obstacle array with Server's position
                 for(int i=0; i<MAX_OBSTACLES; i++) obstacles[i].active = 0;
                 obstacles[0].x = (int)rx;
                 obstacles[0].y = (int)to_local_y(ry);
@@ -196,7 +223,6 @@ int main(int argc, char *argv[])
                 write(pipe_tx, obstacles, sizeof(obstacles));
             }
 
-            // Handle Obstacle Request
             recv_line(sock, buf, 256); // "obst"
             send_msg(sock, "%.2f %.2f", local_drone.x, to_virtual_y(local_drone.y));
             recv_line(sock, buf, 256); // "pok"
@@ -208,5 +234,6 @@ int main(int argc, char *argv[])
     close(sock);
     close(pipe_rx);
     close(pipe_tx);
+    log_msg("NETWORK", "Exiting.");
     return 0;
 }
