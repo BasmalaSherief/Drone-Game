@@ -1,55 +1,44 @@
-#ifndef NETWORKMANAGER_H
-#define NETWORKMANAGER_H
+#ifndef NETWORK_PROTOCOL_H
+#define NETWORK_PROTOCOL_H
 
-#include "../common.h"
-#include <sys/socket.h>
-#include <netinet/in.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 #include <arpa/inet.h>
 
+// Configuration for the network connection
+typedef struct {
+    int socket_fd;
+    int is_server;
+    int connected;
+} NetworkContext;
 
-// NETWORK INITIALIZATION
+// Coordinate point structure
+typedef struct {
+    float x;
+    float y;
+} Point2D;
 
-// Initialize network configuration from params file
-NetworkConfig* init_network_config(const char *config_file);
+// --- INITIALIZATION ---
+// Initialize network (Server listens, Client connects)
+int network_init(NetworkContext *ctx, const char *ip, int port, int is_server);
+void network_close(NetworkContext *ctx);
 
-// Server: Create listening socket and wait for client
-int network_server_init(NetworkConfig *config);
+// --- PROTOCOL HANDLERS ---
+// Handshake: "ok" <-> "ook"
+int protocol_handshake(NetworkContext *ctx);
 
-// Client: Connect to server
-int network_client_init(NetworkConfig *config);
+// Window Size: "size w,h" <-> "sok size"
+// Returns 0 on success, -1 on failure
+int protocol_exchange_window_size(NetworkContext *ctx, int *width, int *height);
 
+// Game Loop Exchange
+// Server sends Drone, receives Obstacle. Client receives Drone, sends Obstacle.
+// Performs coordinate conversion (Virtual <-> Screen) automatically.
+int protocol_exchange_positions(NetworkContext *ctx, Point2D *local_drone, Point2D *remote_obstacle, int map_height);
 
-// PROTOCOL FUNCTIONS
+// Termination: "q" <-> "qok"
+int protocol_send_quit(NetworkContext *ctx);
 
-// Server: Send initial handshake "ok" and wait for "ook"
-int server_handshake(int socket_fd);
-
-// Client: Receive "ok" and send "ook"
-int client_handshake(int socket_fd);
-
-// Server: Send window size "size w,h" and wait for "sok"
-int server_send_size(int socket_fd, int width, int height);
-
-// Client: Receive size and send "sok"
-int client_receive_size(int socket_fd, int *width, int *height);
-
-// Server: Send drone position
-int server_send_drone(int socket_fd, float x, float y);
-
-// Client: Receive drone position
-int client_receive_drone(int socket_fd, float *x, float *y);
-
-// Server: Receive obstacle position (client's drone)
-int server_receive_obstacle(int socket_fd, float *x, float *y);
-
-// Client: Send obstacle position (own drone)
-int client_send_obstacle(int socket_fd, float x, float y);
-
-// Send quit command
-int send_quit(int socket_fd);
-
-// UTILITY FUNCTIONS
-// Close network connection gracefully
-void network_cleanup(NetworkConfig *config);
-
-#endif // NETWORKMANAGER_H
+#endif

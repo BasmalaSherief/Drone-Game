@@ -24,15 +24,16 @@
 // GLOBAL FLAG FOR CLEANUP
 volatile sig_atomic_t keep_running = 1;
 
-// Global network config
-NetworkConfig *net_config = NULL;
+// Global network context 
+NetworkContext net_ctx;
+int operation_mode = 0; // 0=Standalone, 1=Server, 2=Client
 
 // Global PIDs to track children
-pid_t pid_drone = -1;
-pid_t pid_keyboard = -1;
-pid_t pid_obst = -1;
-pid_t pid_targ = -1;
-pid_t pid_wd = -1;
+pid_t pid_drone = 0;
+pid_t pid_keyboard = 0;
+pid_t pid_obst = 0;
+pid_t pid_targ = 0;
+pid_t pid_wd = 0;
 
 void handle_signal(int sig) 
 {
@@ -49,12 +50,30 @@ int main()
     // Prevent crash or broken pipes
     signal(SIGPIPE, SIG_IGN);
 
-    // RUN STARTUP PROMPT
-    prompt_for_mode();
-
     // Logging start of the main process to the log file
     log_msg("MAIN", "Process started with PID %d", getpid());
     srand(time(NULL));
+
+    // NETWORK SETUP CONFIGURATION
+    // Read 'param.conf' here to set operation_mode and IP
+    FILE *f = fopen("param.conf", "r");
+    char server_ip[32] = "127.0.0.1";
+    int port = 5555; // Default
+
+    if (f) 
+    {
+        char line[256];
+        while (fgets(line, sizeof(line), f)) 
+        {
+            if (strstr(line, "MODE=server")) operation_mode = 1;
+            if (strstr(line, "MODE=client")) operation_mode = 2;
+            if (strstr(line, "SERVER_IP=")) sscanf(line, "SERVER_IP=%s", server_ip);
+            
+            // Read the port from the file
+            if (strstr(line, "PORT=")) sscanf(line, "PORT=%d", &port);
+        }
+        fclose(f);
+    }
 
     // DATA INIT 
     WorldState world;
@@ -88,11 +107,9 @@ int main()
     if (mkfifo(fifoBBTar, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBTar"); exit(EXIT_FAILURE); }
     if (mkfifo(fifoTarBB, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoTarBB"); exit(EXIT_FAILURE); }
     
-    // INITIALIZE NETWORK
-    net_config = init_network_config("param.conf");
-
     // The next code block is from the assigment1 fixes
     // LAUNCH CHILDREN 
+    // ALWAYS launch Drone and Keyboard
     // Launch Drone
     char *arg_list_drone[] = { "./drone", NULL };
     pid_drone = spawn_process("./drone", arg_list_drone);
@@ -104,8 +121,9 @@ int main()
     pid_keyboard = spawn_process("konsole", arg_list_kb);
     log_msg("MAIN", "Launched Keyboard Manager with PID: %d", pid_keyboard);
 
-    // ONLY launch Generators and Watchdog if STANDALONE
-    if (net_config->mode == MODE_STANDALONE)
+    // CONDITIONALLY launch Generators and Watchdog
+    // Server and client turn off the obstacle and target generators and the watchdog
+    if (operation_mode == 0) // STANDALONE ONLY
     {
         // Launch Obstacle Process 
         char *arg_list_obs[] = { "./obstacle_process", NULL };
@@ -121,34 +139,41 @@ int main()
         pid_wd = spawn_process("./watchdog", arg_list_wd);
         log_msg("MAIN", "Launched Watchdog with PID: %d", pid_wd);
     }
-
-    if (net_config->mode == MODE_SERVER) 
+    else
     {
-        log_msg("SERVER", "Starting in SERVER mode");
-        // Initialize network
-        if (network_server_init(net_config) < 0) 
-        {
-            fprintf(stderr, "Failed to initialize server\n");
-            exit(1);
-        }
-        server_handshake(net_config->socket_fd);
-        server_send_size(net_config->socket_fd, MAP_WIDTH, MAP_HEIGHT);
+        log_msg("MAIN", "Network Mode: Generators and Watchdog disabled.");
     }
-    
-    else if (net_config->mode == MODE_CLIENT) 
+
+    // NETWORK INITIALIZATION & HANDSHAKE 
+    if (operation_mode != 0) 
     {
-        log_msg("CLIENT", "Starting in CLIENT mode");
-        // Connect to server
-        if (network_client_init(net_config) < 0) 
+        int is_server = (operation_mode == 1);
+        if (network_init(&net_ctx, server_ip, port, is_server) < 0) 
         {
-            fprintf(stderr, "Failed to connect to server\n");
-            exit(1);
+            fprintf(stderr, "Network Init Failed\n");
+            keep_running = 0;
         }
-        client_handshake(net_config->socket_fd);
-        int width, height;
-        client_receive_size(net_config->socket_fd, &width, &height);
-        // Adjust window size to match server
-        log_msg("CLIENT", "Server window size: %dx%d", width, height);
+
+        // Protocol Step 1: Handshake "ok" <-> "ook" 
+        if (protocol_handshake(&net_ctx) < 0) 
+        {
+            fprintf(stderr, "Handshake Failed\n");
+            keep_running = 0;
+        }
+
+        // Protocol Step 2: Window Size Exchange 
+        int w = MAP_WIDTH, h = MAP_HEIGHT;
+        if (protocol_exchange_window_size(&net_ctx, &w, &h) < 0) 
+        {
+            fprintf(stderr, "Size Exchange Failed\n");
+            keep_running = 0;
+        }
+        // If Client, update our map size to match server
+        if (!is_server) 
+        {
+            // Note: In a real app you might need to resize the window here
+            log_msg("NETWORK", "Synced Map Size: %dx%d", w, h);
+        }
     }
 
     // NCURSES INIT
@@ -179,8 +204,9 @@ int main()
     DroneState incoming_drone_state;
     TargetPacket tar_packet;
 
-    // Variable to track the LOCAL drone position (for Client mode)
-    DroneState local_drone = world.drone;
+    // Position containers for Network Logic
+    Point2D local_pos = {0, 0};
+    Point2D remote_pos = {0, 0};
 
     while(keep_running) 
     {
@@ -236,108 +262,65 @@ int main()
 
                 continue; 
             }
-            else
+
+            // In Server/Standalone mode, local input moves the main drone
+            if (operation_mode == 0 || operation_mode == 1) 
             {
-                // If Client: Store input in local_drone (to send to server)
-                if (net_config->mode == MODE_CLIENT)
-                {
-                    local_drone = incoming_drone_state;
-                    world.game_active = 1; // Client is active
-                }
-                // If Server/Standalone: Input controls the main world drone directly.
-                else
-                {
-                    world.drone = incoming_drone_state;
-                    world.game_active = 1;
-                }              
+                world.drone = incoming_drone_state;
+            }
+            // In Client mode, we just store the input to send to server later
+            else if (operation_mode == 2) 
+            {
+                // Client drone is "local_pos", but main display "world.drone" comes from server
+                local_pos.x = incoming_drone_state.x;
+                local_pos.y = incoming_drone_state.y;
             }
         }
 
-        // CORE LOGIC BRANCHING
-        // --- STANDALONE ---
-        if (net_config->mode == MODE_STANDALONE &&world.game_active) 
+        // CORE LOGIC
+        if (operation_mode == 0) // STANDALONE
         {
-            // OBSTACLE SYNC
-            // Send Drone position to Obstacle Process
+            // (Original logic for Obstacles/Targets...)
             write(fd_BBObs, &world.drone, sizeof(DroneState));
-            // Read back updated Obstacles
             read(fd_ObsBB, world.obstacles, sizeof(world.obstacles));
-
-            // TARGET SYNC
-            // Send Drone position to Target Process
+            
             write(fd_BBTar, &world.drone, sizeof(DroneState));
-            // Read back updated Targets + Score
             read(fd_TarBB, &tar_packet, sizeof(TargetPacket));
-            
-            // Update local world
             memcpy(world.targets, tar_packet.targets, sizeof(world.targets));
+            world.score += tar_packet.score_increment;
+        }
+        else // NETWORK MODE (SERVER OR CLIENT)
+        {
+            // Prepare local position for network transmission
+            if (operation_mode == 1) 
+            { // SERVER
+                local_pos.x = world.drone.x;
+                local_pos.y = world.drone.y;
+            } 
+            // Client local_pos was set above in input reading
+            // PROTOCOL EXCHANGE
+            // This function handles the virtual coordinate conversion internally
+            int status = protocol_exchange_positions(&net_ctx, &local_pos, &remote_pos, MAP_HEIGHT);
             
-            if (tar_packet.score_increment > 0) 
-            {
-                world.score += tar_packet.score_increment;
-                log_msg("SERVER", "Score Update! New Score: %d", world.score);
-            }
-
-            // Win Condition
-            if (world.score >= TOTAL_TARGETS_TO_WIN) 
-            {
-                erase();
-                attron(A_BOLD | COLOR_PAIR(COLOR_TARGET));
-                mvprintw(LINES/2, COLS/2 - 5, "YOU WIN!");
-                mvprintw(LINES/2 + 1, COLS/2 - 10, "Final Score: %d", world.score);
-                attroff(A_BOLD | COLOR_PAIR(COLOR_TARGET));
-                refresh();
-                sleep(4);  
-                keep_running = 0;
-            }
-        }
-        // --- SERVER MODE ---
-        else if (net_config->mode == MODE_SERVER && net_config->connected)
-        {
-            // Send Main Drone Pos to Client
-            if (server_send_drone(net_config->socket_fd, world.drone.x, world.drone.y) < 0) 
-            {
-                log_msg("SERVER", "Network Error sending drone");
-                keep_running = 0;
-            }
-
-            // Receive Client's Drone (as an Obstacle)
-            float ox, oy;
-            if (server_receive_obstacle(net_config->socket_fd, &ox, &oy) < 0) 
-            {
-                log_msg("SERVER", "Network Error receiving obstacle");
+            if (status == -2) // Quit signal received
+            { 
                 keep_running = 0;
             } 
-            else 
+            else if (status == 0) 
             {
-                // Update Obstacle 0 to match Client position
-                world.obstacles[0].x = (int)ox;
-                world.obstacles[0].y = (int)oy;
-                world.obstacles[0].active = 1; // Make it visible
-            }
-        }
-
-        // --- CLIENT MODE ---
-        else if (net_config->mode == MODE_CLIENT && net_config->connected)
-        {
-            // Receive Main Drone Pos from Server (and update world)
-            float sx, sy;
-            if (client_receive_drone(net_config->socket_fd, &sx, &sy) < 0) 
-            {
-                log_msg("CLIENT", "Network Error receiving drone");
-                keep_running = 0;
-            } 
-            else 
-            {
-                world.drone.x = sx;
-                world.drone.y = sy;
-            }
-
-            // Send Local Drone (our input) to Server (as obstacle)
-            if (client_send_obstacle(net_config->socket_fd, local_drone.x, local_drone.y) < 0) 
-            {
-                log_msg("CLIENT", "Network Error sending obstacle");
-                keep_running = 0;
+                if (operation_mode == 1) // SERVER
+                { 
+                    // Remote pos is Client Drone -> Treat as Obstacle 0 
+                    world.obstacles[0].x = remote_pos.x;
+                    world.obstacles[0].y = remote_pos.y;
+                    world.obstacles[0].active = 1;
+                } 
+                else // CLIENT
+                { 
+                    // Remote pos is Server Drone -> Update main display
+                    world.drone.x = remote_pos.x;
+                    world.drone.y = remote_pos.y;
+                }
             }
         }
 
@@ -382,11 +365,11 @@ int main()
 
     log_msg("MAIN", "Stopping system...");
 
-    // Send quit signal over network if connected
-    if (net_config->connected && net_config->socket_fd != -1) 
+    // Network Cleanup
+    if (operation_mode != 0) 
     {
-        send_quit(net_config->socket_fd);
-        network_cleanup(net_config);
+        protocol_send_quit(&net_ctx);
+        network_close(&net_ctx);
     }
 
     // Close pipes

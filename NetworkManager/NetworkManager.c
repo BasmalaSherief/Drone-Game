@@ -1,284 +1,216 @@
+#include <sys/socket.h>
+#include <netinet/in.h>
 #include "NetworkManager.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <errno.h>
 
-// Read configuration file
-NetworkConfig* init_network_config(const char *config_file) 
+#define BUFFER_SIZE 256
+
+// --- Coordinate Conversion ---
+// Virtual system, origin at the bottom left
+// Ncurses is Top-Left, We invert Y.
+Point2D to_virtual(Point2D p, int map_height) 
 {
-    NetworkConfig *config = malloc(sizeof(NetworkConfig));
-    config->mode = MODE_STANDALONE;
-    strcpy(config->server_ip, "127.0.0.1");
-    config->port = 5555;
-    config->socket_fd = -1;
-    config->connected = 0;
+    Point2D v;
+    v.x = p.x;
+    v.y = (float)map_height - p.y; 
+    return v;
+}
+
+Point2D to_screen(Point2D v, int map_height) 
+{
+    Point2D p;
+    p.x = v.x;
+    p.y = (float)map_height - v.y;
+    return p;
+}
+
+// --- INITIALIZATION ---
+int network_init(NetworkContext *ctx, const char *ip, int port, int is_server) 
+{
+    ctx->is_server = is_server;
+    ctx->socket_fd = socket(AF_INET, SOCK_STREAM, 0);
     
-    FILE *f = fopen(config_file, "r");
-    if (!f) {
-        log_msg("NETWORK", "Config file not found, using defaults");
-        return config;
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+
+    if (is_server) 
+    {
+        // SERVER: Bind and Listen
+        addr.sin_addr.s_addr = INADDR_ANY;
+        if (bind(ctx->socket_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) return -1;
+        if (listen(ctx->socket_fd, 1) < 0) return -1;
+        
+        printf("Waiting for client connection on port %d...\n", port);
+        int client_fd = accept(ctx->socket_fd, NULL, NULL);
+        if (client_fd < 0) return -1;
+        
+        // Replace listener with client socket for communication
+        close(ctx->socket_fd);
+        ctx->socket_fd = client_fd;
+    } 
+    else 
+    {
+        // CLIENT: Connect
+        if (inet_pton(AF_INET, ip, &addr.sin_addr) <= 0) return -1;
+        if (connect(ctx->socket_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) return -1;
     }
     
-    char line[256];
-    while (fgets(line, sizeof(line), f)) 
+    ctx->connected = 1;
+    return 0;
+}
+
+void network_close(NetworkContext *ctx) 
+{
+    if (ctx->socket_fd >= 0) close(ctx->socket_fd);
+    ctx->connected = 0;
+}
+
+// --- PROTOCOL: HANDSHAKE ---
+// Server: snd "ok"; rcv "ook"
+// Client: rcv "ok"; snd "ook"
+int protocol_handshake(NetworkContext *ctx) 
+{
+    char buf[BUFFER_SIZE];
+    
+    if (ctx->is_server) 
     {
-        if (strncmp(line, "MODE=", 5) == 0) 
+        // 1. Send "ok"
+        sprintf(buf, "ok");
+        send(ctx->socket_fd, buf, strlen(buf)+1, 0);
+        
+        // 2. Receive "ook"
+        recv(ctx->socket_fd, buf, BUFFER_SIZE, 0);
+        if (strcmp(buf, "ook") != 0) return -1;
+    } 
+    else 
+    {
+        // 1. Receive "ok"
+        recv(ctx->socket_fd, buf, BUFFER_SIZE, 0);
+        if (strcmp(buf, "ok") != 0) return -1;
+        
+        // 2. Send "ook"
+        sprintf(buf, "ook");
+        send(ctx->socket_fd, buf, strlen(buf)+1, 0);
+    }
+    return 0;
+}
+
+// --- PROTOCOL: WINDOW SIZE ---
+// Server: snd "size w,h"; rcv "sok <size>"
+// Client: rcv "size w,h"; snd "sok <size>"
+int protocol_exchange_window_size(NetworkContext *ctx, int *width, int *height) 
+{
+    char buf[BUFFER_SIZE];
+    
+    if (ctx->is_server) 
+    {
+        // Send Dimensions
+        sprintf(buf, "size %d,%d", *width, *height);
+        send(ctx->socket_fd, buf, strlen(buf)+1, 0);
+        
+        // Receive Ack
+        recv(ctx->socket_fd, buf, BUFFER_SIZE, 0);
+        // Requirement: "sok <size>"
+        if (strncmp(buf, "sok", 3) != 0) return -1;
+    } 
+    else 
+    {
+        // Receive Dimensions
+        recv(ctx->socket_fd, buf, BUFFER_SIZE, 0);
+        sscanf(buf, "size %d,%d", width, height);
+        
+        // Send Ack
+        sprintf(buf, "sok size"); 
+        send(ctx->socket_fd, buf, strlen(buf)+1, 0);
+    }
+    return 0;
+}
+
+// --- PROTOCOL: MAIN LOOP ---
+int protocol_exchange_positions(NetworkContext *ctx, Point2D *local_drone, Point2D *remote_obstacle, int map_height) 
+{
+    char buf[BUFFER_SIZE];
+    Point2D v_drone, v_obst;
+
+    if (ctx->is_server) 
+    {
+        // --- SERVER SEQUENCE ---
+        // 1. Send "drone" (header)
+        sprintf(buf, "drone");
+        send(ctx->socket_fd, buf, strlen(buf)+1, 0);
+        
+        // 2. Send "x, y" (Virtual Coordinates)
+        v_drone = to_virtual(*local_drone, map_height);
+        sprintf(buf, "%.2f,%.2f", v_drone.x, v_drone.y);
+        send(ctx->socket_fd, buf, strlen(buf)+1, 0);
+        
+        // 3. Receive "dok <drone>" (Ack)
+        recv(ctx->socket_fd, buf, BUFFER_SIZE, 0);
+        if (strncmp(buf, "dok", 3) != 0) return -1;
+
+        // 4. Send "obst" (Requesting obstacle)
+        sprintf(buf, "obst");
+        send(ctx->socket_fd, buf, strlen(buf)+1, 0);
+        
+        // 5. Receive "x, y" (Virtual Coordinates of client drone)
+        recv(ctx->socket_fd, buf, BUFFER_SIZE, 0);
+        sscanf(buf, "%f,%f", &v_obst.x, &v_obst.y);
+        *remote_obstacle = to_screen(v_obst, map_height); // Convert back for display
+        
+        // 6. Send "pok <obstacle>" (Ack)
+        sprintf(buf, "pok obstacle");
+        send(ctx->socket_fd, buf, strlen(buf)+1, 0);
+
+    } 
+    else 
+    {
+        // --- CLIENT SEQUENCE ---      
+        // 1. Receive Header (Expected "drone" or "q")
+        recv(ctx->socket_fd, buf, BUFFER_SIZE, 0);
+        
+        if (strcmp(buf, "q") == 0) 
         {
-            char mode_str[32];
-            sscanf(line + 5, "%s", mode_str);
-            if (strcmp(mode_str, "server") == 0) config->mode = MODE_SERVER;
-            else if (strcmp(mode_str, "client") == 0) config->mode = MODE_CLIENT;
+             // Handle quit request
+             sprintf(buf, "qok");
+             send(ctx->socket_fd, buf, strlen(buf)+1, 0);
+             return -2; // Signal to exit loop
         }
-        else if (strncmp(line, "SERVER_IP=", 10) == 0) 
+        
+        if (strcmp(buf, "drone") == 0) 
         {
-            sscanf(line + 10, "%s", config->server_ip);
+            // 2. Receive Server Drone Position
+            recv(ctx->socket_fd, buf, BUFFER_SIZE, 0);
+            sscanf(buf, "%f,%f", &v_obst.x, &v_obst.y);
+            *remote_obstacle = to_screen(v_obst, map_height); // Server drone acts as obstacle for client
+
+            // 3. Send "dok <drone>"
+            sprintf(buf, "dok drone");
+            send(ctx->socket_fd, buf, strlen(buf)+1, 0);
         }
-        else if (strncmp(line, "PORT=", 5) == 0) 
-        {
-            sscanf(line + 5, "%d", &config->port);
-        }
+        
+        // 4. Receive "obst" request
+        recv(ctx->socket_fd, buf, BUFFER_SIZE, 0); // "obst"
+        
+        // 5. Send Local Drone Position (as "x, y")
+        v_drone = to_virtual(*local_drone, map_height);
+        sprintf(buf, "%.2f,%.2f", v_drone.x, v_drone.y);
+        send(ctx->socket_fd, buf, strlen(buf)+1, 0);
+        
+        // 6. Receive "pok" Ack
+        recv(ctx->socket_fd, buf, BUFFER_SIZE, 0);
     }
     
-    fclose(f);
-    log_msg("NETWORK", "Mode: %d, IP: %s, Port: %d", 
-            config->mode, config->server_ip, config->port);
-    return config;
+    return 0;
 }
 
-// Server initialization
-int network_server_init(NetworkConfig *config) 
+int protocol_send_quit(NetworkContext *ctx) 
 {
-    // Create socket
-    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd < 0) 
+    char buf[16];
+    if (ctx->is_server) 
     {
-        perror("Socket creation failed");
-        return -1;
+        sprintf(buf, "q");
+        send(ctx->socket_fd, buf, strlen(buf)+1, 0);
+        recv(ctx->socket_fd, buf, sizeof(buf), 0); // Expect "qok"
     }
-    
-    // Allow port reuse
-    int opt = 1;
-    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-    
-    // Bind to port
-    struct sockaddr_in address;
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(config->port);
-    
-    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) 
-    {
-        perror("Bind failed");
-        close(server_fd);
-        return -1;
-    }
-    
-    // Listen
-    if (listen(server_fd, 1) < 0) 
-    {
-        perror("Listen failed");
-        close(server_fd);
-        return -1;
-    }
-    
-    log_msg("NETWORK", "Server listening on port %d...", config->port);
-    
-    // Accept connection
-    int client_fd = accept(server_fd, NULL, NULL);
-    if (client_fd < 0) 
-    {
-        perror("Accept failed");
-        close(server_fd);
-        return -1;
-    }
-    
-    close(server_fd);
-    config->socket_fd = client_fd;
-    config->connected = 1;
-    log_msg("NETWORK", "Client connected!");
-    
-    return client_fd;
-}
-
-// Client initialization
-int network_client_init(NetworkConfig *config) 
-{
-    // Create socket
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) 
-    {
-        perror("Socket creation failed");
-        return -1;
-    }
-    
-    // Connect to server
-    struct sockaddr_in server_addr;
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(config->port);
-    
-    if (inet_pton(AF_INET, config->server_ip, &server_addr.sin_addr) <= 0) {
-        perror("Invalid address");
-        close(sock);
-        return -1;
-    }
-    
-    log_msg("NETWORK", "Connecting to %s:%d...", config->server_ip, config->port);
-    
-    if (connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        perror("Connection failed");
-        close(sock);
-        return -1;
-    }
-    
-    config->socket_fd = sock;
-    config->connected = 1;
-    log_msg("NETWORK", "Connected to server!");
-    
-    return sock;
-}
-
-// Protocol implementations 
-int server_handshake(int socket_fd) 
-{
-    // Send "ok"
-    char msg[16] = "ok";
-    if (send(socket_fd, msg, strlen(msg) + 1, 0) < 0) return -1;
-    
-    // Receive "ook"
-    char response[16];
-    if (recv(socket_fd, response, sizeof(response), 0) < 0) return -1;
-    
-    if (strcmp(response, "ook") != 0) 
-    {
-        log_msg("NETWORK", "Handshake failed: expected 'ook', got '%s'", response);
-        return -1;
-    }
-    
-    log_msg("NETWORK", "Handshake complete");
     return 0;
-}
-
-int client_handshake(int socket_fd) {
-    // Receive "ok"
-    char msg[16];
-    if (recv(socket_fd, msg, sizeof(msg), 0) < 0) return -1;
-    
-    if (strcmp(msg, "ok") != 0) 
-    {
-        log_msg("NETWORK", "Handshake failed: expected 'ok', got '%s'", msg);
-        return -1;
-    }
-    
-    // Send "ook"
-    char response[16] = "ook";
-    if (send(socket_fd, response, strlen(response) + 1, 0) < 0) return -1;
-    
-    log_msg("NETWORK", "Handshake complete");
-    return 0;
-}
-
-int server_send_size(int socket_fd, int width, int height) 
-{
-    char msg[64];
-    snprintf(msg, sizeof(msg), "size %d,%d", width, height);
-    if (send(socket_fd, msg, strlen(msg) + 1, 0) < 0) return -1;
-    
-    char response[64];
-    if (recv(socket_fd, response, sizeof(response), 0) < 0) return -1;
-    
-    return (strncmp(response, "sok", 3) == 0) ? 0 : -1;
-}
-
-int client_receive_size(int socket_fd, int *width, int *height) {
-    char msg[64];
-    if (recv(socket_fd, msg, sizeof(msg), 0) < 0) return -1;
-    
-    if (sscanf(msg, "size %d,%d", width, height) != 2) return -1;
-    
-    char response[16] = "sok size";
-    send(socket_fd, response, strlen(response) + 1, 0);
-    
-    return 0;
-}
-
-// Server: Send "drone x,y", wait for "dok"
-int server_send_drone(int socket_fd, float x, float y) 
-{
-    char msg[64];
-    snprintf(msg, sizeof(msg), "drone %.2f,%.2f", x, y);
-    if (send(socket_fd, msg, strlen(msg) + 1, 0) < 0) return -1;
-    
-    char response[16];
-    if (recv(socket_fd, response, sizeof(response), 0) <= 0) return -1;
-    
-    // Expect "dok"
-    if (strncmp(response, "dok", 3) != 0) return -1;
-    return 0;
-}
-
-// Client: Receive "drone x,y", send "dok"
-int client_receive_drone(int socket_fd, float *x, float *y) 
-{
-    char msg[64];
-    if (recv(socket_fd, msg, sizeof(msg), 0) <= 0) return -1;
-    
-    // Parse "drone x,y"
-    if (sscanf(msg, "drone %f,%f", x, y) != 2) return -1;
-    
-    char response[16] = "dok";
-    send(socket_fd, response, strlen(response) + 1, 0);
-    return 0;
-}
-
-// Server: Send "obst", wait for "x,y", send "pok"
-int server_receive_obstacle(int socket_fd, float *x, float *y) 
-{
-    // 1. Send Request "obst"
-    char req[16] = "obst";
-    if (send(socket_fd, req, strlen(req) + 1, 0) < 0) return -1;
-    
-    // 2. Receive Data "x,y"
-    char msg[64];
-    if (recv(socket_fd, msg, sizeof(msg), 0) <= 0) return -1;
-    if (sscanf(msg, "%f,%f", x, y) != 2) return -1;
-
-    // 3. Send Ack "pok"
-    char ack[16] = "pok";
-    send(socket_fd, ack, strlen(ack) + 1, 0);
-    return 0;
-}
-
-// Client: Receive "obst", send "x,y", wait for "pok"
-int client_send_obstacle(int socket_fd, float x, float y) 
-{
-    // 1. Receive Request "obst"
-    char msg[16];
-    if (recv(socket_fd, msg, sizeof(msg), 0) <= 0) return -1;
-    if (strncmp(msg, "obst", 4) != 0) return -1;
-
-    // 2. Send Data "x,y"
-    char resp[64];
-    snprintf(resp, sizeof(resp), "%.2f,%.2f", x, y);
-    if (send(socket_fd, resp, strlen(resp) + 1, 0) < 0) return -1;
-
-    // 3. Receive Ack "pok"
-    if (recv(socket_fd, msg, sizeof(msg), 0) <= 0) return -1;
-    if (strncmp(msg, "pok", 3) != 0) return -1;
-    
-    return 0;
-}
-
-int send_quit(int socket_fd)
-{
-    char msg[16] = "q";
-    send(socket_fd, msg, strlen(msg)+1, 0);
-    return 0;
-}
-
-void network_cleanup(NetworkConfig *config) 
-{
-    if (config->socket_fd != -1) close(config->socket_fd);
-    free(config);
 }
