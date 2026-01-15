@@ -151,24 +151,23 @@ chmod +x run.sh
 ## 📂 Project Structure
 
 ```
-├── BlackBoardServer/
+├── assignmentsv6.0.pdf
+├── BlackBoardServer
 │   ├── Blackboard_functions.c
 │   ├── Blackboard.h
 │   └── BlackboardServer.c
 ├── common.c
 ├── common.h
-├── DroneDynamics/
+├── DroneDynamics
 │   ├── DroneController.c
 │   └── DroneController.h
-├── KeyboardManager/
+├── KeyboardManager
 │   ├── Keyboard_functions.c
 │   ├── KeyboardManager.c
 │   └── KeyboardManager.h
 ├── Makefile
-├── NetworkManager/
-│   ├── NetworkManager.c
-│   └── NetworkManager.h
-├── ObstaclesGenerator/
+├── NetworkProcess.c
+├── ObstaclesGenerator
 │   ├── Obstacles_functions.c
 │   ├── ObstaclesGenerator.c
 │   └── ObstaclesGenerator.h
@@ -176,12 +175,13 @@ chmod +x run.sh
 ├── README.MD
 ├── run.sh
 ├── Screenshot.png
-├── TargetGenerator/
+├── TargetGenerator
 │   ├── TargetGenerator.c
 │   ├── TargetGenerator.h
 │   └── Targets_functions.c
-└── Watchdog/
+└── Watchdog
     └── Watchdog.c
+
 ```
 
 ## 🌐 Network Protocol Specification
