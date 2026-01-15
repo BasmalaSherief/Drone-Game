@@ -144,41 +144,6 @@ int main()
         log_msg("MAIN", "Network Mode: Generators and Watchdog disabled.");
     }
 
-    // NETWORK INITIALIZATION & HANDSHAKE 
-    if (operation_mode != 0) 
-    {
-        int is_server = (operation_mode == 1);
-        if (network_init(&net_ctx, server_ip, port, is_server) < 0) 
-        {
-            fprintf(stderr, "Network Init Failed\n");
-            keep_running = 0;
-        }
-
-        // Protocol Step 1: Handshake "ok" <-> "ook" 
-        if (protocol_handshake(&net_ctx) < 0) 
-        {
-            fprintf(stderr, "Handshake Failed\n");
-            keep_running = 0;
-        }
-
-        // Protocol Step 2: Window Size Exchange 
-        int w = MAP_WIDTH, h = MAP_HEIGHT;
-        if (protocol_exchange_window_size(&net_ctx, &w, &h) < 0) 
-        {
-            fprintf(stderr, "Size Exchange Failed\n");
-            keep_running = 0;
-        }
-        // If Client, update our map size to match server
-        if (!is_server) 
-        {
-            // Note: In a real app you might need to resize the window here
-            log_msg("NETWORK", "Synced Map Size: %dx%d", w, h);
-        }
-    }
-
-    // NCURSES INIT
-    init_console();
-
     // Non-blocking open for pipes 
     int fd_DBB = open(fifoDBB, O_RDONLY | O_NONBLOCK);
     if (fd_DBB == -1) { endwin(); perror("open read"); exit(1); }
@@ -200,6 +165,41 @@ int main()
   
     int fd_TarBB = open(fifoTarBB, O_RDONLY); 
     if (fd_TarBB == -1) { endwin(); perror("open read TarBB"); exit(1); }
+
+    // NETWORK INITIALIZATION & HANDSHAKE 
+    if (operation_mode != 0) 
+    {
+        int is_server = (operation_mode == 1);
+        if (network_init(&net_ctx, server_ip, port, is_server) < 0) 
+        {
+            log_msg("SERVER", "CRITICAL ERROR: Network Init Failed (Check Port/IP)");
+            keep_running = 0;
+        }
+
+        // Protocol Step 1: Handshake "ok" <-> "ook" 
+        if (protocol_handshake(&net_ctx) < 0) 
+        {
+            log_msg("SERVER", "CRITICAL ERROR: Handshake Failed");
+            keep_running = 0;
+        }
+
+        // Protocol Step 2: Window Size Exchange 
+        int w = MAP_WIDTH, h = MAP_HEIGHT;
+        if (protocol_exchange_window_size(&net_ctx, &w, &h) < 0) 
+        {
+            fprintf(stderr, "Size Exchange Failed\n");
+            keep_running = 0;
+        }
+        // If Client, update our map size to match server
+        if (!is_server) 
+        {
+            // Note: In a real app you might need to resize the window here
+            log_msg("NETWORK", "Synced Map Size: %dx%d", w, h);
+        }
+    }
+
+    // NCURSES INIT
+    init_console();
 
     DroneState incoming_drone_state;
     TargetPacket tar_packet;

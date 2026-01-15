@@ -29,20 +29,51 @@ int network_init(NetworkContext *ctx, const char *ip, int port, int is_server)
     ctx->is_server = is_server;
     ctx->socket_fd = socket(AF_INET, SOCK_STREAM, 0);
     
+    if (ctx->socket_fd < 0) 
+    {
+        perror("Socket creation failed");
+        return -1;
+    }
+    
     struct sockaddr_in addr;
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
 
     if (is_server) 
     {
+        // Allow Port Reuse 
+        int opt = 1;
+        if (setsockopt(ctx->socket_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) 
+        {
+            perror("setsockopt failed");
+            return -1;
+        }
+
         // SERVER: Bind and Listen
         addr.sin_addr.s_addr = INADDR_ANY;
-        if (bind(ctx->socket_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) return -1;
-        if (listen(ctx->socket_fd, 1) < 0) return -1;
         
-        printf("Waiting for client connection on port %d...\n", port);
+        if (bind(ctx->socket_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) 
+        {
+            perror("Bind failed (Port might be busy)");
+            return -1;
+        }
+        
+        if (listen(ctx->socket_fd, 1) < 0) 
+        {
+            perror("Listen failed");
+            return -1;
+        }
+        
+        printf(">> WAITING FOR CLIENT ON PORT %d...\n", port);
+        
+        // This blocks until client connects
         int client_fd = accept(ctx->socket_fd, NULL, NULL);
-        if (client_fd < 0) return -1;
+        if (client_fd < 0) {
+            perror("Accept failed");
+            return -1;
+        }
+        
+        printf(">> CLIENT CONNECTED!\n");
         
         // Replace listener with client socket for communication
         close(ctx->socket_fd);
@@ -51,8 +82,20 @@ int network_init(NetworkContext *ctx, const char *ip, int port, int is_server)
     else 
     {
         // CLIENT: Connect
-        if (inet_pton(AF_INET, ip, &addr.sin_addr) <= 0) return -1;
-        if (connect(ctx->socket_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) return -1;
+        if (inet_pton(AF_INET, ip, &addr.sin_addr) <= 0) 
+        {
+            fprintf(stderr, "Invalid IP address: %s\n", ip);
+            return -1;
+        }
+        
+        printf(">> CONNECTING TO %s:%d...\n", ip, port);
+        
+        if (connect(ctx->socket_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) 
+        {
+            perror("Connection failed");
+            return -1;
+        }
+        printf(">> CONNECTED TO SERVER!\n");
     }
     
     ctx->connected = 1;
