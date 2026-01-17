@@ -1,253 +1,302 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdarg.h>
+#include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <string.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <errno.h>
+#include <stdarg.h>
 #include "common.h" 
 
-// --- Coordinate Conversion ---
-float to_virtual_y(float y) { return (float)(MAP_HEIGHT - 1) - y; }
-float to_local_y(float y) { return (float)(MAP_HEIGHT - 1) - y; }
 
-// --- Helper Functions ---
-int send_msg(int sock, const char *fmt, ...) 
-{
-    char buf[256];
-    va_list args;
-    va_start(args, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, args);
-    va_end(args);
-    // Ensure newline for string-based protocol
-    if (buf[strlen(buf)-1] != '\n') strcat(buf, "\n");
-    return write(sock, buf, strlen(buf));
+// Coordinate Inversion 
+// Converts Top-Left (Ncurses) to Bottom-Left (Cartesian) and vice-versa
+float invert_axis(float y) 
+{ 
+    return (float)(MAP_HEIGHT - 1) - y; 
 }
 
-int recv_line(int sock, char *buf, int size) 
+// ROBUST BUFFERED RECEIVER
+int recv_line(LinkContext *ctx, char *dest, int max_len) 
 {
-    int i = 0; char c;
-    while (i < size - 1) 
-    {
-        if (read(sock, &c, 1) <= 0) return -1;
-        if (c == '\n') break;
-        buf[i++] = c;
-    }
-    buf[i] = '\0';
-    return i;
-}
-
-int main(int argc, char *argv[]) 
-{
-    // Log startup
-    log_msg("NETWORK", "Process started.");
-
-    if (argc < 4) 
-    {
-        log_msg("NETWORK", "Error: Missing arguments.");
-        return 1;
-    }
-
-    int mode = atoi(argv[1]); // 1=Server, 2=Client
-    int port = atoi(argv[2]);
-    char *ip = argv[3];
-
-    // --- 1. SETUP NAMED PIPES ---
-    const char *fifoBBObs = "/tmp/fifoBBObs"; // Read local drone
-    const char *fifoObsBB = "/tmp/fifoObsBB"; // Write remote obstacle
-
-    int pipe_rx = open(fifoBBObs, O_RDONLY );
-    int pipe_tx = open(fifoObsBB, O_WRONLY );
-
-    if (pipe_rx < 0 || pipe_tx < 0) 
-    {
-        log_msg("NETWORK", "Error: Failed to open pipes.");
-        return 1;
-    }
-
-    // --- 2. SETUP SOCKET ---
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    struct sockaddr_in addr = {0};
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-
-    log_msg("NETWORK", "Initializing as %s on port %d...", (mode == 1) ? "SERVER" : "CLIENT", port);
-
-    if (mode == 1) 
-    { // SERVER MODE
-        addr.sin_addr.s_addr = INADDR_ANY;
-        int opt = 1;
-        setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-        
-        if (bind(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) 
+    int line_idx = 0;
+    
+    while (1) {
+        // 1. Check if we have data in the internal buffer
+        while (ctx->buf_start < ctx->buf_end) 
         {
-            log_msg("NETWORK", "Error: Bind failed.");
-            return 1;
+            char c = ctx->net_buffer[ctx->buf_start++];
+            
+            if (c == '\n') 
+            {
+                dest[line_idx] = '\0'; // Null-terminate
+                
+                // Logging
+                log_msg("NETWORK", "RX << '%s'", dest); 
+                return line_idx; // Successfully got a full line
+            }
+            
+            if (line_idx < max_len - 1) 
+            {
+                dest[line_idx++] = c;
+            }
         }
-        listen(sock, 1);
         
-        log_msg("NETWORK", "Waiting for client connection...");
-        int client_sock = accept(sock, NULL, NULL);
-        if (client_sock < 0) {
-            log_msg("NETWORK", "Error: Accept failed.");
-            return 1;
+        // 2. Buffer is empty or exhausted, read more from socket
+        ctx->buf_start = 0;
+        int n = read(ctx->conn_fd, ctx->net_buffer, BUFFER_CAP);
+        
+        if (n <= 0) 
+        {
+            log_msg("NETWORK", "Connection Lost or Socket Closed.");
+            return -1; // Error or Disconnect
         }
         
-        close(sock); // Close listener
-        sock = client_sock; // Use client connection
-        log_msg("NETWORK", "Client connected.");
+        ctx->buf_end = n;
+    }
+}
 
-        // --- HANDSHAKE (Server side) ---
-        // 1. Send "ok"
-        send_msg(sock, "ok");
+ssize_t send_line(int fd, const char *format, ...) 
+{
+    char payload[BUFFER_CAP];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(payload, sizeof(payload), format, args);
+    va_end(args);
+
+    // Logging
+    log_msg("NETWORK", "TX >> '%s'", payload); 
+
+    // Append Newline
+    strncat(payload, "\n", BUFFER_CAP - strlen(payload) - 1);
+    return write(fd, payload, strlen(payload));
+}
+
+int establish_link(int role, const char *target_ip, int port) 
+{
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) 
+    {
+        log_msg("NETWORK", "Error creating socket: %s", strerror(errno));
+        return -1;
+    }
+
+    struct sockaddr_in s_addr = {0};
+    s_addr.sin_family = AF_INET;
+    s_addr.sin_port = htons(port);
+
+    log_msg("NETWORK", "Connecting to %s:%d ...", target_ip, port);
+
+    if (role == MODE_SERVER) 
+    { 
+        s_addr.sin_addr.s_addr = INADDR_ANY;
+        int opt_val = 1;
+        setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt_val, sizeof(opt_val));
         
-        // 2. Receive "ook"
-        char buf[256]; 
-        recv_line(sock, buf, 256); 
-        if (strcmp(buf, "ook") != 0) log_msg("NETWORK", "Warning: Handshake 'ook' mismatch. Got: %s", buf);
-
-        // 3. Send "size w, h" (Added comma as per PDF)
-        send_msg(sock, "size %d, %d", MAP_WIDTH, MAP_HEIGHT);
+        if (bind(sockfd, (struct sockaddr *)&s_addr, sizeof(s_addr)) < 0) 
+        {
+            log_msg("NETWORK", "FATAL: Bind Failed (Port busy?)");
+            return -1;
+        }
+        listen(sockfd, 1);
         
-        // 4. Receive "sok size ..."
-        recv_line(sock, buf, 256); 
-        log_msg("NETWORK", "Handshake complete. Received ack: %s", buf);
-
+        log_msg("NETWORK", "Waiting for Client...");
+        int client_fd = accept(sockfd, NULL, NULL);
+        log_msg("NETWORK", "Client Accepted!");
+        close(sockfd);
+        return client_fd;
     } 
     else 
-    { // CLIENT MODE
-        struct hostent *he = gethostbyname(ip);
-        if (!he) 
-        { 
-            log_msg("NETWORK", "Error: Invalid IP address."); 
-            return 1; 
-        }
-        memcpy(&addr.sin_addr, he->h_addr_list[0], he->h_length);
-        
-        log_msg("NETWORK", "Connecting to %s...", ip);
-        while(connect(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) 
+    { 
+        struct hostent *host = gethostbyname(target_ip);
+        if (!host) 
         {
-            sleep(1); // Retry
+            log_msg("NETWORK", "FATAL: Invalid Host/IP");
+            return -1;
         }
-        log_msg("NETWORK", "Connected to Server.");
+        memcpy(&s_addr.sin_addr, host->h_addr_list[0], host->h_length);
+        
+        while (connect(sockfd, (struct sockaddr *)&s_addr, sizeof(s_addr)) < 0) 
+        {
+            log_msg("NETWORK", "Retrying Connection...");
+            sleep(RETRY_SEC);
+        }
+        log_msg("NETWORK", "Connected to Server!");
+        return sockfd;
+    }
+}
 
-        // --- HANDSHAKE (Client side) ---
-        char buf[256]; 
+void execute_handshake(LinkContext *ctx) 
+{
+    char rx_buf[BUFFER_CAP];
+    log_msg("NETWORK", "Starting Handshake...");
+    
+    if (ctx->role == MODE_SERVER) 
+    {
+        // SERVER SIDE
+        send_line(ctx->conn_fd, "ok");
+        recv_line(ctx, rx_buf, BUFFER_CAP); // Expect "ook"
         
-        // 1. Receive "ok"
-        recv_line(sock, buf, 256); 
+        // Send size with COMMA as per PDF
+        send_line(ctx->conn_fd, "size %d, %d", MAP_WIDTH, MAP_HEIGHT);
+        recv_line(ctx, rx_buf, BUFFER_CAP); // Expect "sok"
+    } 
+    else 
+    {
+        // CLIENT SIDE
+        recv_line(ctx, rx_buf, BUFFER_CAP); // Wait for "ok"
+        send_line(ctx->conn_fd, "ook");
         
-        // 2. Send "ook"
-        send_msg(sock, "ook");
+        recv_line(ctx, rx_buf, BUFFER_CAP); // Wait for "size ..."
         
-        // 3. Receive "size w, h"
-        recv_line(sock, buf, 256); // buf contains "size 80, 24"
-        log_msg("NETWORK", "Server Window: %s", buf);
-
-        // [FIX] Parse Dimensions (Handle comma or space)
+        // RESIZE LOGIC START
+        // Parse dimensions to resize the client window
         int w = MAP_WIDTH; 
         int h = MAP_HEIGHT;
-        if (sscanf(buf, "size %d, %d", &w, &h) != 2) {
-             sscanf(buf, "size %d %d", &w, &h);
+        if (sscanf(rx_buf, "size %d, %d", &w, &h) != 2) 
+        {
+             sscanf(rx_buf, "size %d %d", &w, &h); // Fallback for space
         }
-
-        // 4. Send "sok size ..."
-        char ack_msg[512];
-        snprintf(ack_msg, sizeof(ack_msg), "sok %s", buf); 
-        send_msg(sock, ack_msg);
-
-        // INTERNAL: Send Resize Command to Blackboard Server
-        // We abuse the Obstacle structure to pass the config: x=width, y=height, active=99
+        
+        // Send "Magic Obstacle" to Blackboard to trigger resize
         Obstacle config_pkt[MAX_OBSTACLES];
         memset(config_pkt, 0, sizeof(config_pkt));
         config_pkt[0].x = w;
         config_pkt[0].y = h;
         config_pkt[0].active = 99; // 99 = Special Resize Flag
-        write(pipe_tx, config_pkt, sizeof(config_pkt));
-        
+        write(ctx->pipe_out_fd, config_pkt, sizeof(config_pkt));
         log_msg("NETWORK", "Sent resize command (%dx%d) to Blackboard.", w, h);
+
+        // Send Acknowledge with the received string
+        char ack_msg[256];
+        snprintf(ack_msg, sizeof(ack_msg), "sok %s", rx_buf);
+        send_line(ctx->conn_fd, ack_msg);
     }
+    log_msg("NETWORK", "Handshake Complete. Game ON.");
+}
 
-    log_msg("NETWORK", "Starting Game Loop.");
-
-    // --- 3. GAME LOOP ---
+void process_traffic(LinkContext *ctx) 
+{
     DroneState local_drone = {0};
-    Obstacle obstacles[MAX_OBSTACLES]; 
-    char buf[256];
+    
+    // We must write OBSTACLES to the blackboard, not DroneState 
+    Obstacle remote_obs_pkt[MAX_OBSTACLES]; 
+    
+    char buffer[BUFFER_CAP];
+    float x_in, y_in;
 
-    while(1) 
+    // Set Pipe to Non-Blocking so game doesn't freeze network
+    fcntl(ctx->pipe_in_fd, F_SETFL, O_NONBLOCK);
+
+    while (1) 
     {
-        // 1. Read Local Drone Position (Drain Pipe)
-        ssize_t r;
-        while ((r = read(pipe_rx, &local_drone, sizeof(DroneState))) > 0) {
-            // keep last valid drone state
+        // Drain local pipe to get latest local drone position
+        while (read(ctx->pipe_in_fd, &local_drone, sizeof(DroneState)) > 0);
+
+        if (ctx->role == MODE_SERVER) 
+        {
+            // SERVER LOOP
+            // 1. Send Drone
+            send_line(ctx->conn_fd, "drone");
+            send_line(ctx->conn_fd, "%.2f %.2f", local_drone.x, invert_axis(local_drone.y));
+            recv_line(ctx, buffer, BUFFER_CAP); // Ack "dok"
+
+            // 2. Request Obstacle
+            send_line(ctx->conn_fd, "obst");
+            recv_line(ctx, buffer, BUFFER_CAP); // Obstacle Coords
+            
+            // 3. Process Received Data
+            if(sscanf(buffer, "%f %f", &x_in, &y_in) == 2) 
+            {
+                // Prepare Blackboard Packet
+                memset(remote_obs_pkt, 0, sizeof(remote_obs_pkt));
+                remote_obs_pkt[0].x = (int)x_in;
+                remote_obs_pkt[0].y = (int)invert_axis(y_in);
+                remote_obs_pkt[0].active = 1;
+                
+                // Write to Blackboard
+                write(ctx->pipe_out_fd, remote_obs_pkt, sizeof(remote_obs_pkt));
+            }
+            send_line(ctx->conn_fd, "pok");
+
+        } else 
+        {
+            // CLIENT LOOP
+            // 1. Receive Drone
+            recv_line(ctx, buffer, BUFFER_CAP); // "drone" tag
+            
+            // Handle Quit Signal
+            if (strncmp(buffer, "q", 1) == 0) 
+            {
+                 send_line(ctx->conn_fd, "qok");
+                 log_msg("NETWORK", "Server requested quit.");
+                 break;
+            }
+
+            recv_line(ctx, buffer, BUFFER_CAP); // Coords
+            
+            if(sscanf(buffer, "%f %f", &x_in, &y_in) == 2) 
+            {
+                memset(remote_obs_pkt, 0, sizeof(remote_obs_pkt));
+                remote_obs_pkt[0].x = (int)x_in;
+                remote_obs_pkt[0].y = (int)invert_axis(y_in);
+                remote_obs_pkt[0].active = 1;
+                write(ctx->pipe_out_fd, remote_obs_pkt, sizeof(remote_obs_pkt));
+            }
+            send_line(ctx->conn_fd, "dok");
+
+            // 2. Send Obstacle (Local Drone)
+            recv_line(ctx, buffer, BUFFER_CAP); // "obst" tag
+            send_line(ctx->conn_fd, "%.2f %.2f", local_drone.x, invert_axis(local_drone.y));
+            recv_line(ctx, buffer, BUFFER_CAP); // Ack "pok"
         }
         
-        if (mode == 1) 
-        { // SERVER PROTOCOL LOOP
-            // Send Drone
-            send_msg(sock, "drone");
-            send_msg(sock, "%.2f %.2f", local_drone.x, to_virtual_y(local_drone.y));
-            recv_line(sock, buf, 256); // Receive "dok"
+        usleep(SYNC_RATE_US); 
+    }
+}
 
-            // Request Obstacle
-            send_msg(sock, "obst");
-            recv_line(sock, buf, 256); // Receive "x y"
-            
-            float rx, ry; 
-            sscanf(buf, "%f %f", &rx, &ry);
-            
-            send_msg(sock, "pok"); // Acknowledge
+int main(int argc, char *argv[]) 
+{
+    // Arguments passed by BlackboardServer: <mode> <port> <ip>
+    if (argc < 4) 
+    {
+        log_msg("NETWORK", "Error: Missing arguments.");
+        return 1;
+    }
+    
+    log_msg("NETWORK", "Process started");
+    
+    LinkContext ctx = {0};
+    ctx.role = atoi(argv[1]);
+    int port_num = atoi(argv[2]);
+    char *ip_addr = argv[3];
 
-            // Update Blackboard
-            for(int i=0; i<MAX_OBSTACLES; i++) obstacles[i].active = 0;
-            obstacles[0].x = (int)rx;
-            obstacles[0].y = (int)to_local_y(ry);
-            obstacles[0].active = 1; 
-            
-            write(pipe_tx, obstacles, sizeof(obstacles));
-        } 
-        else 
-        { // CLIENT PROTOCOL LOOP
-            recv_line(sock, buf, 256); 
-            
-            if (strcmp(buf, "q") == 0) 
-            {
-                send_msg(sock, "qok");
-                log_msg("NETWORK", "Server requested quit.");
-                break;
-            }
-            
-            if (strcmp(buf, "drone") == 0) 
-            {
-                recv_line(sock, buf, 256); 
-                float rx, ry; 
-                sscanf(buf, "%f %f", &rx, &ry);
-                
-                send_msg(sock, "dok");
+    // SETUP NAMED PIPES
+    // fifoBBObs -> Read Local Drone (Server sends it here)
+    // fifoObsBB -> Write Remote Obstacle (Server reads it from here)
+    
+    ctx.pipe_in_fd = open("/tmp/fifoBBObs", O_RDONLY);
+    ctx.pipe_out_fd = open("/tmp/fifoObsBB", O_WRONLY);
 
-                for(int i=0; i<MAX_OBSTACLES; i++) obstacles[i].active = 0;
-                obstacles[0].x = (int)rx;
-                obstacles[0].y = (int)to_local_y(ry);
-                obstacles[0].active = 1;
-                write(pipe_tx, obstacles, sizeof(obstacles));
-            }
-
-            recv_line(sock, buf, 256); // "obst"
-            send_msg(sock, "%.2f %.2f", local_drone.x, to_virtual_y(local_drone.y));
-            recv_line(sock, buf, 256); // "pok"
-        }
-
-        usleep(30000); // 30ms Tick
+    if (ctx.pipe_in_fd < 0 || ctx.pipe_out_fd < 0) 
+    {
+        log_msg("NETWORK", "Error opening Named Pipes! Check Blackboard.");
+        return 1;
     }
 
-    close(sock);
-    close(pipe_rx);
-    close(pipe_tx);
-    log_msg("NETWORK", "Exiting.");
+    // Connect
+    ctx.conn_fd = establish_link(ctx.role, ip_addr, port_num);
+    if (ctx.conn_fd < 0) return 1;
+
+    // Run
+    execute_handshake(&ctx);
+    process_traffic(&ctx);
+    
+    close(ctx.conn_fd);
+    close(ctx.pipe_in_fd);
+    close(ctx.pipe_out_fd);
     return 0;
 }

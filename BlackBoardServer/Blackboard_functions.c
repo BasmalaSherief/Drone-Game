@@ -54,37 +54,61 @@ void init_console()
 
 void draw_map(WorldState *world) 
 {
+    // Access the global operation mode (0=Local, 1=Server, 2=Client)
+    extern int operation_mode; 
+
     erase(); 
     
-    // Draw Borders dynamically based on current window size
+    // 1. Draw Borders & Header Information
     box(stdscr, 0, 0);
-    mvprintw(0, 2, " MAP DISPLAY ");
-    mvprintw(0, 20, " Score: %d ", world->score);
-    mvprintw(0, 40, " Size: %dx%d ", COLS, LINES); 
+    
+    // Determine Mode String
+    char mode_str[20];
+    if (operation_mode == 0) strcpy(mode_str, " LOCAL ");
+    else if (operation_mode == 1) strcpy(mode_str, " SERVER ");
+    else strcpy(mode_str, " CLIENT ");
+
+    // Print Header
+    attron(A_BOLD);
+    mvprintw(0, 2, " Mode:%s", mode_str);
+    mvprintw(0, 25, " Score: %d ", world->score);
+    mvprintw(0, 45, " Window: %dx%d ", COLS, LINES); 
+    attroff(A_BOLD);
 
     // Scaling Factors
-    // Map internal coordinates (0-80) to Screen coordinates (0-COLS)
     float scale_x = (float)COLS / MAP_WIDTH;
     float scale_y = (float)LINES / MAP_HEIGHT;
 
-    // Draw Obstacles 
+    // 2. Draw Obstacles (and Remote Drone)
     attron(COLOR_PAIR(COLOR_OBSTACLE));
-    for(int i=0; i<MAX_OBSTACLES; i++) {
-        if(world->obstacles[i].active) {
+    for(int i=0; i<MAX_OBSTACLES; i++) 
+    {
+        if(world->obstacles[i].active) 
+        {
             int screen_x = (int)(world->obstacles[i].x * scale_x);
             int screen_y = (int)(world->obstacles[i].y * scale_y);
-            // Bounds check to keep inside box
+            
+            // Bounds check
             if(screen_x >= COLS-1) screen_x = COLS-2;
             if(screen_y >= LINES-1) screen_y = LINES-2;
             if(screen_x < 1) screen_x = 1;
             if(screen_y < 1) screen_y = 1;
             
-            mvaddch(screen_y, screen_x, 'O');
+            // NETWORK MODE
+            // In Network Mode, Index 0 is reserved for the Remote Drone.
+            // We draw it as 'X' to distinguish it from static obstacles 'O'.
+            if (operation_mode != 0 && i == 0) 
+            {
+                 mvaddch(screen_y, screen_x, 'X' | A_BOLD); // Remote Drone
+            } else 
+            {
+                 mvaddch(screen_y, screen_x, 'O'); // Normal Obstacle
+            }
         }
     }
     attroff(COLOR_PAIR(COLOR_OBSTACLE));
 
-    // Draw Targets 
+    // 3. Draw Targets 
     attron(COLOR_PAIR(COLOR_TARGET));
     for(int i=0; i<MAX_TARGETS; i++) 
     {
@@ -103,7 +127,7 @@ void draw_map(WorldState *world)
     }
     attroff(COLOR_PAIR(COLOR_TARGET));
 
-    // Draw Drone 
+    // 4. Draw Local Drone 
     attron(COLOR_PAIR(COLOR_DRONE));
     int drone_screen_x = (int)(world->drone.x * scale_x);
     int drone_screen_y = (int)(world->drone.y * scale_y);

@@ -27,11 +27,11 @@ volatile sig_atomic_t keep_running = 1;
 int operation_mode = 0; // 0=Standalone, 1=Server, 2=Client
 
 // Global PIDs to track children
-pid_t pid_drone = 0;
-pid_t pid_keyboard = 0;
-pid_t pid_obst = 0;
-pid_t pid_targ = 0;
-pid_t pid_wd = 0;
+pid_t pid_drone = -1;
+pid_t pid_keyboard = -1;
+pid_t pid_obst = -1;
+pid_t pid_targ = -1;
+pid_t pid_wd = -1;
 
 void handle_signal(int sig) 
 {
@@ -72,19 +72,16 @@ int main()
     }
 
     // DATA INIT 
-    WorldState world;
-    world.drone.x = MAP_WIDTH / 2.0;
+    WorldState world = {0};
+    world.drone.x = MAP_WIDTH / 2.0; 
     world.drone.y = MAP_HEIGHT / 2.0;
     world.drone.vx = 0; world.drone.vy = 0;
     world.score = 0;
     world.game_active = 0;
+    TargetPacket tar_pkt;
 
     for(int i=0; i<MAX_OBSTACLES; i++) world.obstacles[i].active = 0;
     for(int i=0; i<MAX_TARGETS; i++) world.targets[i].active = 0;
-
-    // GAME COUNTERS
-    int targets_spawned_total = 0;
-    int targets_collected_total = 0;
 
     // PIPES + check for their errors
     const char *fifoDBB = "/tmp/fifoDBB";   
@@ -112,22 +109,9 @@ int main()
     log_msg("MAIN", "Launched Drone with PID: %d", pid_drone);
 
     // Launch Keyboard
-    // pass the keyboard executable as an argument (konsole -e ./keyboard)
-    if (operation_mode == 0) 
-    {
-        // STANDALONE: Use konsole for separate keyboard window
-        char *arg_list_kb[] = { "konsole", "-e", "./keyboard", NULL };
-        pid_keyboard = spawn_process("konsole", arg_list_kb);
-        log_msg("MAIN", "Launched Keyboard Manager with PID: %d", pid_keyboard);
-    } 
-    else 
-    {
-        // NETWORK MODE: Run keyboard without GUI wrapper
-        // The main BlackboardServer ncurses window will show everything
-        char *arg_list_kb[] = { "./keyboard", NULL };
-        pid_keyboard = spawn_process("./keyboard", arg_list_kb);
-        log_msg("MAIN", "Launched Keyboard Manager (no separate window) with PID: %d", pid_keyboard);
-    }
+    char *arg_list_kb[] = { "konsole", "-e", "./keyboard", NULL };
+    pid_keyboard = spawn_process("konsole", arg_list_kb);
+    log_msg("MAIN", "Launched Keyboard Manager with PID: %d", pid_keyboard);
 
     // CONDITIONALLY launch Generators and Watchdog
     // Server and client turn off the obstacle and target generators and the watchdog
@@ -194,14 +178,14 @@ int main()
         log_msg("MAIN", "Waiting for Server Handshake (Window Size)...");
         // This read acts as a synchronization barrier. 
         // We wait for NetworkProcess to finish handshake and send dimensions.
-        Obstacle init_obs[MAX_OBSTACLES];
-        ssize_t r = read(fd_ObsBB, init_obs, sizeof(init_obs));
+        Obstacle init_pkt[MAX_OBSTACLES];
+        ssize_t r = read(fd_ObsBB, init_pkt, sizeof(init_pkt));
         
         // Check for the special resize flag (99) set in NetworkProcess.c
-        if (r > 0 && init_obs[0].active == 99) 
+        if (r > 0 && init_pkt[0].active == 99) 
         {
-            int w = init_obs[0].x;
-            int h = init_obs[0].y;
+            int w = init_pkt[0].x;
+            int h = init_pkt[0].y;
             
             // Resize Ncurses Window
             resizeterm(h, w); 
@@ -216,9 +200,6 @@ int main()
         }
     }
 
-    DroneState incoming_drone_state;
-    TargetPacket tar_packet;
-
     while(keep_running) 
     {
         // Send heartbeat to the watchdog
@@ -228,6 +209,7 @@ int main()
         }
 
         // READ INPUT (From Local Drone Controller)
+        DroneState incoming_drone_state;
         ssize_t bytesRead = read(fd_DBB, &incoming_drone_state, sizeof(DroneState));
 
         if (bytesRead == -1) 
@@ -258,10 +240,6 @@ int main()
                 // Reset World State
                 world.score = 0;
                 world.game_active = 0;
-                
-                // Reset Counters
-                targets_spawned_total = 0;
-                targets_collected_total = 0;
 
                 // Clear Arrays (Set active = 0)
                 for(int i=0; i<MAX_OBSTACLES; i++) world.obstacles[i].active = 0;
@@ -285,9 +263,9 @@ int main()
         if (operation_mode == 0) 
         {
             write(fd_BBTar, &world.drone, sizeof(DroneState));
-            read(fd_TarBB, &tar_packet, sizeof(TargetPacket));
-            memcpy(world.targets, tar_packet.targets, sizeof(world.targets));
-            world.score += tar_packet.score_increment;
+            read(fd_TarBB, &tar_pkt, sizeof(TargetPacket));
+            memcpy(world.targets, tar_pkt.targets, sizeof(world.targets));
+            world.score += tar_pkt.score_increment;
         }
         else 
         {

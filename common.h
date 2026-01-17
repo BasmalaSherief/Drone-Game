@@ -13,6 +13,10 @@
 // GAME CONFIGURATION
 #define TOTAL_TARGETS_TO_WIN 10
 
+// NETWORK SETTINGS
+#define BUFFER_CAP 1024       
+#define SYNC_RATE_US 30000 
+#define RETRY_SEC 1
 
 // KEYBOARD INPUT (Input Process -> Drone Process) 
 typedef struct {
@@ -80,21 +84,16 @@ typedef enum {
 
 // Network Packet Structure
 typedef struct {
-    char type[16];    // Message type string
-    float x;          // Position X
-    float y;          // Position Y
-    int width;        // Window width 
-    int height;       // Window height 
-} NetworkPacket;
-
-// Network Configuration
-typedef struct {
-    OperationMode mode;
-    char server_ip[32];
-    int port;
-    int socket_fd;
-    int connected;
-} NetworkConfig;
+    int conn_fd;
+    int pipe_in_fd;   // Reads Local Drone (fifoBBObs)
+    int pipe_out_fd;  // Writes Remote Obstacle (fifoObsBB)
+    int role; 
+    
+    // Internal Buffer State
+    char net_buffer[BUFFER_CAP];
+    int buf_start;
+    int buf_end;
+} LinkContext;
 
 // Log function that appends to a file
 void log_msg(const char *process_name, const char *format, ...);

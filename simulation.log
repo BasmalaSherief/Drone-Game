@@ -1,0 +1,21 @@
+[Sat Jan 17 16:47:09 2026] [MAIN] Process started with PID 105959
+[Sat Jan 17 16:47:09 2026] [MAIN] Launched Drone with PID: 105961
+[Sat Jan 17 16:47:09 2026] [MAIN] Launched Keyboard Manager with PID: 105962
+[Sat Jan 17 16:47:09 2026] [MAIN] Launched Network Process with PID: 105963 (IP: 172.20.10.5)
+[Sat Jan 17 16:47:09 2026] [NETWORK] Process started
+[Sat Jan 17 16:47:10 2026] [NETWORK] Connecting to 172.20.10.5:5555 ...
+[Sat Jan 17 16:47:10 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Sat Jan 17 16:47:10 2026] [NETWORK] Waiting for Client...
+[Sat Jan 17 16:47:14 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Sat Jan 17 16:47:17 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Sat Jan 17 16:47:20 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Sat Jan 17 16:47:23 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Sat Jan 17 16:47:26 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Sat Jan 17 16:47:29 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Sat Jan 17 16:47:32 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Sat Jan 17 16:47:35 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Sat Jan 17 16:47:38 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Sat Jan 17 16:47:41 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Sat Jan 17 16:47:44 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Sat Jan 17 16:47:47 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
+[Sat Jan 17 16:47:50 2026] [PHYSICS] Pos: (10.00, 10.00), Vel: (0.00, 0.00)
