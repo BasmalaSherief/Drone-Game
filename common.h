@@ -18,6 +18,13 @@
 #define SYNC_RATE_US 30000 
 #define RETRY_SEC 1
 
+// NETWORK PIPE DEFINITIONS
+// These specific paths ensure Blackboard and NetworkProcess find each other
+#define FIFO_NET_RX "/tmp/fifoObsBB"  // Network -> Blackboard (Remote Obstacles/Drone)
+#define FIFO_NET_TX "/tmp/fifoBBObs"  // Blackboard -> Network (Local Drone)
+#define RESIZE_FLAG 99
+
+//DATA STRUCTURES
 // KEYBOARD INPUT (Input Process -> Drone Process) 
 typedef struct {
     float force_x;    
@@ -67,20 +74,6 @@ typedef enum {
     MODE_SERVER,      // Server: Share drone, receive obstacle
     MODE_CLIENT       // Client: Send drone, display remote
 } OperationMode;
-
-// Network Message Types (for protocol)
-typedef enum {
-    MSG_OK,           // Handshake: "ok"
-    MSG_OOK,          // Acknowledgment: "ook"
-    MSG_SIZE,         // Window size: "size"
-    MSG_SOK,          // Size acknowledgment: "sok"
-    MSG_DRONE,        // Drone position: "drone"
-    MSG_DOK,          // Drone acknowledgment: "dok"
-    MSG_OBST,         // Obstacle position: "obst"
-    MSG_POK,          // Obstacle acknowledgment: "pok"
-    MSG_QUIT,         // Quit command: "q"
-    MSG_QOK           // Quit acknowledgment: "qok"
-} MessageType;
 
 // Network Packet Structure
 typedef struct {

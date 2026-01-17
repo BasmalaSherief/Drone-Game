@@ -27,11 +27,11 @@ volatile sig_atomic_t keep_running = 1;
 int operation_mode = 0; // 0=Standalone, 1=Server, 2=Client
 
 // Global PIDs to track children
-pid_t pid_drone = -1;
-pid_t pid_keyboard = -1;
-pid_t pid_obst = -1;
-pid_t pid_targ = -1;
-pid_t pid_wd = -1;
+pid_t pid_drone = 0;
+pid_t pid_keyboard = 0;
+pid_t pid_obst = 0;
+pid_t pid_targ = 0;
+pid_t pid_wd = 0;
 
 void handle_signal(int sig) 
 {
@@ -71,34 +71,23 @@ int main()
         fclose(f);
     }
 
-    // DATA INIT 
-    WorldState world = {0};
-    world.drone.x = MAP_WIDTH / 2.0; 
-    world.drone.y = MAP_HEIGHT / 2.0;
-    world.drone.vx = 0; world.drone.vy = 0;
-    world.score = 0;
-    world.game_active = 0;
-    TargetPacket tar_pkt;
-
-    for(int i=0; i<MAX_OBSTACLES; i++) world.obstacles[i].active = 0;
-    for(int i=0; i<MAX_TARGETS; i++) world.targets[i].active = 0;
-
     // PIPES + check for their errors
     const char *fifoDBB = "/tmp/fifoDBB";   
     const char *fifoBBD = "/tmp/fifoBBD";   
     const char *fifoBBDIS = "/tmp/fifoBBDIS"; 
-    const char *fifoBBObs = "/tmp/fifoBBObs";   // Server -> Obs
-    const char *fifoObsBB = "/tmp/fifoObsBB"; // Obs -> Server
     const char *fifoBBTar = "/tmp/fifoBBTar";   // Server -> Tar
     const char *fifoTarBB = "/tmp/fifoTarBB"; // Tar -> Server
 
     if (mkfifo(fifoDBB, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoDBB"); exit(EXIT_FAILURE); }
     if (mkfifo(fifoBBD, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBD"); exit(EXIT_FAILURE); }
     if (mkfifo(fifoBBDIS, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBDIS"); exit(EXIT_FAILURE); }
-    if (mkfifo(fifoBBObs, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBObs"); exit(EXIT_FAILURE); }
-    if (mkfifo(fifoObsBB, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoObsBB"); exit(EXIT_FAILURE); }
-    if (mkfifo(fifoBBTar, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBTar"); exit(EXIT_FAILURE); }
-    if (mkfifo(fifoTarBB, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoTarBB"); exit(EXIT_FAILURE); }
+    if (mkfifo(FIFO_NET_RX, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBObs"); exit(EXIT_FAILURE); }
+    if (mkfifo(FIFO_NET_TX, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoObsBB"); exit(EXIT_FAILURE); }
+    if(operation_mode == 0) // Only create target pipes in standalone mode
+    {
+        if (mkfifo(fifoBBTar, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBTar"); exit(EXIT_FAILURE); }
+        if (mkfifo(fifoTarBB, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoTarBB"); exit(EXIT_FAILURE); }
+    }
     
     // The next code block is from the assigment1 fixes
     // LAUNCH CHILDREN 
@@ -133,17 +122,12 @@ int main()
     }
     else // NETWORK MODE (SERVER OR CLIENT)
     {
-        // It uses the same pipes as the obstacle generator!   
-        char mode_str[10];
-        char port_str[10];
-        sprintf(mode_str, "%d", operation_mode); // "1" or "2"
-        sprintf(port_str, "%d", port);
-
-        // Arguments: ./network_process <mode> <port> <ip>
-        char *arg_list_net[] = { "./network_process", mode_str, port_str, server_ip, NULL };
-        
-        // We reuse pid_obst to track it since it fills the "obstacle" role
-        pid_obst = spawn_process("./network_process", arg_list_net);
+        // Network Process
+        char m[5], p[10];
+        sprintf(m, "%d", operation_mode);
+        sprintf(p, "%d", port);
+        char *args_n[] = {"./network_process", m, p, server_ip, NULL};
+        pid_obst = spawn_process("./network_process", args_n); // Reuse pid_obs
         log_msg("MAIN", "Launched Network Process with PID: %d (IP: %s)", pid_obst, server_ip);
     }
 
@@ -157,11 +141,11 @@ int main()
     int fd_BBDIS = open(fifoBBDIS, O_WRONLY);
     if (fd_BBDIS == -1) { endwin(); perror("open write BBDIS"); exit(1); }
 
-    int fd_BBObs = open(fifoBBObs, O_WRONLY );
-    if (fd_BBObs == -1) { endwin(); perror("open write BBObs"); exit(1); }
-  
-    int fd_ObsBB = open(fifoObsBB, O_RDONLY); 
-    if (fd_ObsBB == -1) { endwin(); perror("open read ObsBB"); exit(1); }
+    // Network Shared Pipes
+    int fd_NetTX = open(FIFO_NET_TX, O_WRONLY);
+    if (fd_NetTX == -1) { endwin(); perror("open write NetTX"); exit(1); }
+    int fd_NetRX = open(FIFO_NET_RX, O_RDONLY);
+    if (fd_NetRX == -1) { endwin(); perror("open read NetRX"); exit(1); }
 
     int fd_BBTar = open(fifoBBTar, O_WRONLY );
     if (fd_BBTar == -1) { endwin(); perror("open write BBTar"); exit(1); }
@@ -175,30 +159,34 @@ int main()
     // CLIENT MODE WINDOW RESIZING
     if (operation_mode == 2) 
     {
-        log_msg("MAIN", "Waiting for Server Handshake (Window Size)...");
-        // This read acts as a synchronization barrier. 
-        // We wait for NetworkProcess to finish handshake and send dimensions.
-        Obstacle init_pkt[MAX_OBSTACLES];
-        ssize_t r = read(fd_ObsBB, init_pkt, sizeof(init_pkt));
-        
-        // Check for the special resize flag (99) set in NetworkProcess.c
-        if (r > 0 && init_pkt[0].active == 99) 
+        log_msg("MAIN", "Waiting for Server Handshake...");
+        Obstacle pkt[MAX_OBSTACLES];
+        // Blocking read until network finishes handshake
+        ssize_t r = read(fd_NetRX, pkt, sizeof(pkt));
+        if(r > 0 && pkt[0].active == RESIZE_FLAG) 
         {
-            int w = init_pkt[0].x;
-            int h = init_pkt[0].y;
-            
-            // Resize Ncurses Window
-            resizeterm(h, w); 
-            wresize(stdscr, h, w);
-            erase();
-            refresh();
-            log_msg("MAIN", "Handshake complete. Resized window to %dx%d.", w, h);
+            resizeterm(pkt[0].y, pkt[0].x);
+            wresize(stdscr, pkt[0].y, pkt[0].x);
+            erase(); refresh();
+            log_msg("MAIN", "Resized window to %dx%d", pkt[0].x, pkt[0].y);
         }
         else 
         {
             log_msg("MAIN", "Warning: Did not receive valid resize packet from NetworkProcess.");
         }
     }
+
+    // DATA INIT 
+    WorldState world = {0};
+    world.drone.x = MAP_WIDTH / 2.0; 
+    world.drone.y = MAP_HEIGHT / 2.0;
+    world.drone.vx = 0; world.drone.vy = 0;
+    world.score = 0;
+    world.game_active = 0;
+    TargetPacket tar_pkt;
+
+    for(int i=0; i<MAX_OBSTACLES; i++) world.obstacles[i].active = 0;
+    for(int i=0; i<MAX_TARGETS; i++) world.targets[i].active = 0;
 
     while(keep_running) 
     {
@@ -256,8 +244,8 @@ int main()
         }
 
         // CORE LOGIC
-        write(fd_BBObs, &world.drone, sizeof(DroneState));
-        read(fd_ObsBB, world.obstacles, sizeof(world.obstacles));
+        write(fd_NetTX, &world.drone, sizeof(DroneState));
+        read(fd_NetRX, world.obstacles, sizeof(world.obstacles));
 
         // TARGETS (Standalone Only)
         if (operation_mode == 0) 
@@ -318,8 +306,8 @@ int main()
     close(fd_DBB);
     close(fd_BBD);
     close(fd_BBDIS);
-    close(fd_BBObs);
-    close(fd_ObsBB);
+    close(fd_NetTX);
+    close(fd_NetRX);
     close(fd_BBTar);
     close(fd_TarBB);
 
@@ -342,8 +330,8 @@ int main()
     unlink(fifoDBB);
     unlink(fifoBBD);
     unlink(fifoBBDIS);
-    unlink(fifoBBObs);
-    unlink(fifoObsBB);
+    unlink(FIFO_NET_TX);
+    unlink(FIFO_NET_RX);
     unlink(fifoBBTar);
     unlink(fifoTarBB);
 
