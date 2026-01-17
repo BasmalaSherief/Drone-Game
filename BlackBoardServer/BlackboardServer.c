@@ -132,7 +132,7 @@ int main()
     }
 
     // Non-blocking open for pipes 
-    int fd_DBB = open(fifoDBB, O_RDONLY | O_NONBLOCK);
+    int fd_DBB = open(fifoDBB, O_RDWR | O_NONBLOCK);
     if (fd_DBB == -1) { endwin(); perror("open read"); exit(1); }
   
     int fd_BBD = open(fifoBBD, O_WRONLY); 
@@ -147,11 +147,17 @@ int main()
     int fd_NetRX = open(FIFO_NET_RX, O_RDONLY);
     if (fd_NetRX == -1) { endwin(); perror("open read NetRX"); exit(1); }
 
-    int fd_BBTar = open(fifoBBTar, O_WRONLY );
-    if (fd_BBTar == -1) { endwin(); perror("open write BBTar"); exit(1); }
-  
-    int fd_TarBB = open(fifoTarBB, O_RDONLY); 
-    if (fd_TarBB == -1) { endwin(); perror("open read TarBB"); exit(1); }
+    int fd_BBTar = -1;
+    int fd_TarBB = -1;
+
+    if (operation_mode == 0)
+    {
+        fd_BBTar = open(fifoBBTar, O_WRONLY );
+        if (fd_BBTar == -1) { endwin(); perror("open write BBTar"); exit(1); }
+      
+        fd_TarBB = open(fifoTarBB, O_RDONLY); 
+        if (fd_TarBB == -1) { endwin(); perror("open read TarBB"); exit(1); }
+    }
     
     // NCURSES INIT
     init_console();
@@ -308,8 +314,11 @@ int main()
     close(fd_BBDIS);
     close(fd_NetTX);
     close(fd_NetRX);
-    close(fd_BBTar);
-    close(fd_TarBB);
+    if (operation_mode == 0)
+    {
+        close(fd_BBTar);
+        close(fd_TarBB);
+    }
 
     // Kill children using their PIDs
     if (pid_drone > 0) kill(pid_drone, SIGTERM);
@@ -332,8 +341,11 @@ int main()
     unlink(fifoBBDIS);
     unlink(FIFO_NET_TX);
     unlink(FIFO_NET_RX);
-    unlink(fifoBBTar);
-    unlink(fifoTarBB);
+    if (operation_mode == 0)
+    {
+        unlink(fifoBBTar);
+        unlink(fifoTarBB);
+    }
 
     // Force kill group to ensure terminal windows close
     system("pkill -f drone");
