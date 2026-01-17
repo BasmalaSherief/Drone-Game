@@ -87,7 +87,46 @@ int main()
         InputMsg msg = {0,0,0};
 
         // Read Input (Non-blocking)
-        ssize_t bytesRead = read(fd_KD, &msg, sizeof(msg));
+        // Read Input (Non-blocking)
+        // DRAIN THE PIPE to prevent lag (process only the latest inputs)
+        ssize_t bytesRead = 0;
+        InputMsg temp_msg;
+        int any_input = 0;
+
+        while ((bytesRead = read(fd_KD, &temp_msg, sizeof(temp_msg))) > 0) 
+        {
+            any_input = 1;
+
+            // Always take the latest force (overwrites previous ones in the buffer)
+            msg.force_x = temp_msg.force_x;
+            msg.force_y = temp_msg.force_y;
+
+            // Latch commands: If a command is seen in the buffer, keep it.
+            // If multiple commands are in the buffer (unlikely in 30ms), the last one prevails 
+            // unless we want to prioritize specific ones. 
+            // For now, if we see a command, we update our msg to have it.
+            if (temp_msg.command != 0) 
+            {
+                msg.command = temp_msg.command;
+            }
+        }
+
+        // If 'any_input' is true, we have a valid 'msg' (state composed of latest force + any command).
+        // 'bytesRead' will be -1 (EAGAIN) at the end of the loop, or 0 if closed.
+        
+        // To respect existing logic below that checks 'bytesRead', we simulate it:
+        if (any_input) 
+        {
+            bytesRead = sizeof(msg); // Pretend we read one full message successfully
+        } 
+        else 
+        {
+            // If no input was found, we rely on the LAST read result.
+            // If the loop never ran (first read failed), bytesRead is from the condition check?
+            // Wait, "while ((bytesRead = read...))".
+            // If first read is -1, loop doesn't run. bytesRead is -1. Correct.
+            // If first read is 0, loop doesn't run. bytesRead is 0. Correct.
+        }
         
         // Read Obstacles (Non-blocking)
         ssize_t obsBytes = read(fd_BBD, obstacles, sizeof(obstacles));

@@ -69,6 +69,41 @@ graph TD
     WD -.->|"SIGTERM (Timeout Kill)"| BB
 ```
 
+### Process Diagram (Network Mode)
+
+In **Network Mode**, the architecture adapts. The **Obstacle Generator**, **Target Generator**, and **Watchdog** are disabled. Instead, a **Network Process** is launched to bridge the local Blackboard to the remote machine.
+
+The system cleverly **reuses the existing pipes** originally designed for the Obstacle Generator:
+- `fifoBBObs` (normally "BB -> Obstacle Gen") is used to send the **Local Drone Position** to the Network Process.
+- `fifoObsBB` (normally "Obstacle Gen -> BB") is used to receive **Remote Drone/Obstacles** from the Network Process.
+
+```mermaid
+graph TD
+    subgraph "Local Machine"
+        KB["Keyboard Manager"]
+        DC["Drone Dynamics"]
+        BB["Blackboard Server"]
+        NP["Network Process"]
+    end
+
+    subgraph "Remote Machine"
+        R_NP["Network Process"]
+    end
+
+    %% LOCAL PIPES
+    KB ==>|"fifoKD"| DC
+    DC ==>|"fifoDBB"| BB
+    BB ==>|"fifoBBD"| DC
+    BB ==>|"fifoBBDIS"| KB
+
+    %% REUSED PIPES FOR NETWORK
+    BB ==>|"fifoBBObs (Local Drone)"| NP
+    NP ==>|"fifoObsBB (Remote Drone)"| BB
+
+    %% TCP CONNECTION
+    NP <==>|"TCP Socket (Protocal: ok/ook)"| R_NP
+```
+
 ### Network Architecture (Assignment 3)
 
 In **Network Mode**, two instances run on separate machines. The system adheres to a strict requirement where generators (Obstacles/Targets) and Watchdog are disabled.
