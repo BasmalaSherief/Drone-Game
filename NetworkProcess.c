@@ -99,9 +99,21 @@ int main(int argc, char *argv[])
     int port = atoi(argv[2]);
     char *ip = argv[3];
 
-    // Open Pipes defined in common.h
-    ctx.pipe_in_fd = open(FIFO_NET_TX, O_RDONLY); // Read Local Drone
-    ctx.pipe_out_fd = open(FIFO_NET_RX, O_WRONLY); // Write Remote Obstacle
+    // Construct Pipe Paths based on Role
+    char fifo_tx[100];
+    char fifo_rx[100];
+    char suffix[50] = "";
+
+    if (ctx.role == 1) strcpy(suffix, "_server");
+    else if (ctx.role == 2) strcpy(suffix, "_client");
+
+    // FIFO_NET_TX is /tmp/fifoBBObs (Blackboard -> Network)
+    // FIFO_NET_RX is /tmp/fifoObsBB (Network -> Blackboard)
+    snprintf(fifo_tx, sizeof(fifo_tx), "/tmp/fifoBBObs%s", suffix);
+    snprintf(fifo_rx, sizeof(fifo_rx), "/tmp/fifoObsBB%s", suffix);
+
+    ctx.pipe_in_fd = open(fifo_tx, O_RDONLY); // Read Local Drone
+    ctx.pipe_out_fd = open(fifo_rx, O_WRONLY); // Write Remote Obstacle
 
     if (ctx.pipe_in_fd < 0 || ctx.pipe_out_fd < 0) 
     {

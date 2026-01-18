@@ -19,15 +19,24 @@ void handle_signal(int sig)
     keep_running = 0;
 }
 
-int main() 
+int main(int argc, char *argv[]) 
 {
     // REGISTER SIGNALS
     signal(SIGINT, handle_signal);  // Ctrl+C
     signal(SIGTERM, handle_signal); // Kill command
 
     // PIPE SETUP + Checking their errros
-    const char *fifoKD = "/tmp/fifoKD";       // Write commands to Drone
-    const char *fifoBBDIS = "/tmp/fifoBBDIS"; // Read state from Blackboard
+    // PIPE SETUP + Checking their errros
+    char fifoKD[100];
+    char fifoBBDIS[100];
+
+    char suffix[50] = "";
+    if (argc > 1) {
+        snprintf(suffix, sizeof(suffix), "%s", argv[1]);
+    }
+
+    snprintf(fifoKD, sizeof(fifoKD), "/tmp/fifoKD%s", suffix);
+    snprintf(fifoBBDIS, sizeof(fifoBBDIS), "/tmp/fifoBBDIS%s", suffix);
     
     if (mkfifo(fifoKD, 0666) == -1 && errno != EEXIST) { perror("Keyboard: Failed to create fifoKD"); exit(EXIT_FAILURE); }
 

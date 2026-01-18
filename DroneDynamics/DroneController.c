@@ -9,6 +9,8 @@
 #include "DroneController.h"
 #include "../common.h"
 #include "../ObstaclesGenerator/ObstaclesGenerator.h"
+#include <string.h>
+
 
 /*  ASSIGNMENT1 CORRECTION:
         - Fixed the killing 
@@ -46,7 +48,7 @@ void update_physics(DroneState *drone)
     drone->y += drone->vy * DT;
 }
 
-int main() 
+int main(int argc, char *argv[]) 
 {
     // REGISTER SIGNALS
     signal(SIGINT, handle_signal);  // Ctrl+C
@@ -55,9 +57,19 @@ int main()
     static int frame_count = 0;
 
     // Pipes Setup 
-    const char *fifoKD = "/tmp/fifoKD"; // Between Keyboard and Drone Controller
-    const char *fifoDBB = "/tmp/fifoDBB"; // Send to the Blackboard Server
-    const char *fifoBBD = "/tmp/fifoBBD"; // Recieve from the Blackboard server
+    // Pipes Setup 
+    char fifoKD[100]; 
+    char fifoDBB[100]; 
+    char fifoBBD[100];
+
+    char suffix[50] = "";
+    if (argc > 1) {
+        snprintf(suffix, sizeof(suffix), "%s", argv[1]);
+    }
+
+    snprintf(fifoKD, sizeof(fifoKD), "/tmp/fifoKD%s", suffix);
+    snprintf(fifoDBB, sizeof(fifoDBB), "/tmp/fifoDBB%s", suffix);
+    snprintf(fifoBBD, sizeof(fifoBBD), "/tmp/fifoBBD%s", suffix);
 
     if (mkfifo(fifoKD, 0666) == -1 && errno != EEXIST) { perror("Drone fifoKD"); exit(1); }
     if (mkfifo(fifoDBB, 0666) == -1 && errno != EEXIST) { perror("Drone fifoDBB"); exit(1); }

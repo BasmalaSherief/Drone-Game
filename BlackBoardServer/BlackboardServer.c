@@ -72,17 +72,35 @@ int main()
     }
 
     // PIPES + check for their errors
-    const char *fifoDBB = "/tmp/fifoDBB";   
-    const char *fifoBBD = "/tmp/fifoBBD";   
-    const char *fifoBBDIS = "/tmp/fifoBBDIS"; 
-    const char *fifoBBTar = "/tmp/fifoBBTar";   // Server -> Tar
-    const char *fifoTarBB = "/tmp/fifoTarBB"; // Tar -> Server
+    // PIPES + check for their errors
+    char fifoDBB[100];   
+    char fifoBBD[100];   
+    char fifoBBDIS[100]; 
+    char fifoBBTar[100]; 
+    char fifoTarBB[100];
+    char fifoNetRX[100];
+    char fifoNetTX[100];
+
+    char suffix[50] = "";
+    if (operation_mode == 1) strcpy(suffix, "_server");
+    else if (operation_mode == 2) strcpy(suffix, "_client");
+
+    snprintf(fifoDBB, sizeof(fifoDBB), "/tmp/fifoDBB%s", suffix);
+    snprintf(fifoBBD, sizeof(fifoBBD), "/tmp/fifoBBD%s", suffix);
+    snprintf(fifoBBDIS, sizeof(fifoBBDIS), "/tmp/fifoBBDIS%s", suffix);
+    snprintf(fifoBBTar, sizeof(fifoBBTar), "/tmp/fifoBBTar%s", suffix);
+    snprintf(fifoTarBB, sizeof(fifoTarBB), "/tmp/fifoTarBB%s", suffix);
+    // NETWORK PIPES: 
+    // RX = Network->Board
+    // TX = Board->Network
+    snprintf(fifoNetRX, sizeof(fifoNetRX), "/tmp/fifoObsBB%s", suffix);
+    snprintf(fifoNetTX, sizeof(fifoNetTX), "/tmp/fifoBBObs%s", suffix);
 
     if (mkfifo(fifoDBB, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoDBB"); exit(EXIT_FAILURE); }
     if (mkfifo(fifoBBD, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBD"); exit(EXIT_FAILURE); }
     if (mkfifo(fifoBBDIS, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBDIS"); exit(EXIT_FAILURE); }
-    if (mkfifo(FIFO_NET_RX, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBObs"); exit(EXIT_FAILURE); }
-    if (mkfifo(FIFO_NET_TX, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoObsBB"); exit(EXIT_FAILURE); }
+    if (mkfifo(fifoNetRX, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoNetRX"); exit(EXIT_FAILURE); }
+    if (mkfifo(fifoNetTX, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoNetTX"); exit(EXIT_FAILURE); }
     if(operation_mode == 0) // Only create target pipes in standalone mode
     {
         if (mkfifo(fifoBBTar, 0666) == -1 && errno != EEXIST) { perror("Server: Failed to create fifoBBTar"); exit(EXIT_FAILURE); }
@@ -93,12 +111,13 @@ int main()
     // LAUNCH CHILDREN 
     // ALWAYS launch Drone and Keyboard
     // Launch Drone
-    char *arg_list_drone[] = { "./drone", NULL };
+    // Run children with suffix
+    char *arg_list_drone[] = { "./drone", suffix, NULL };
     pid_drone = spawn_process("./drone", arg_list_drone);
     log_msg("MAIN", "Launched Drone with PID: %d", pid_drone);
 
     // Launch Keyboard
-    char *arg_list_kb[] = { "konsole", "-e", "./keyboard", NULL };
+    char *arg_list_kb[] = { "konsole", "-e", "./keyboard", suffix, NULL };
     pid_keyboard = spawn_process("konsole", arg_list_kb);
     log_msg("MAIN", "Launched Keyboard Manager with PID: %d", pid_keyboard);
 
@@ -142,9 +161,9 @@ int main()
     if (fd_BBDIS == -1) { endwin(); perror("open write BBDIS"); exit(1); }
 
     // Network Shared Pipes
-    int fd_NetTX = open(FIFO_NET_TX, O_WRONLY);
+    int fd_NetTX = open(fifoNetTX, O_WRONLY);
     if (fd_NetTX == -1) { endwin(); perror("open write NetTX"); exit(1); }
-    int fd_NetRX = open(FIFO_NET_RX, O_RDONLY);
+    int fd_NetRX = open(fifoNetRX, O_RDONLY);
     if (fd_NetRX == -1) { endwin(); perror("open read NetRX"); exit(1); }
 
     int fd_BBTar = -1;
@@ -336,11 +355,12 @@ int main()
     endwin();  
 
     // Unlink pipes so they don't persist
+    // Unlink pipes so they don't persist
     unlink(fifoDBB);
     unlink(fifoBBD);
     unlink(fifoBBDIS);
-    unlink(FIFO_NET_TX);
-    unlink(FIFO_NET_RX);
+    unlink(fifoNetTX);
+    unlink(fifoNetRX);
     if (operation_mode == 0)
     {
         unlink(fifoBBTar);
