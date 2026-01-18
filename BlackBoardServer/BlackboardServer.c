@@ -163,7 +163,7 @@ int main()
     // Network Shared Pipes
     int fd_NetTX = open(fifoNetTX, O_WRONLY);
     if (fd_NetTX == -1) { endwin(); perror("open write NetTX"); exit(1); }
-    int fd_NetRX = open(fifoNetRX, O_RDONLY);
+    int fd_NetRX = open(fifoNetRX, O_RDONLY | O_NONBLOCK);
     if (fd_NetRX == -1) { endwin(); perror("open read NetRX"); exit(1); }
 
     int fd_BBTar = -1;
@@ -223,29 +223,29 @@ int main()
 
         // READ INPUT (From Local Drone Controller)
         DroneState incoming_drone_state;
-        ssize_t bytesRead = read(fd_DBB, &incoming_drone_state, sizeof(DroneState));
+        // Drain Pipe Loop
+        while (1) 
+        {
+            ssize_t bytesRead = read(fd_DBB, &incoming_drone_state, sizeof(DroneState));
 
-        if (bytesRead == -1) 
-        {
-            if (errno != EAGAIN) // no data right now
-            { 
-                perror("Server: Error reading from Drone Pipe (fifoDBB)");
-            }
-        } 
-        else if (bytesRead == 0)  // Pipe is closed
-        {
-            // EOF handling: DO NOT EXIT IMMEDIATELY, let loop finish
-            log_msg("SERVER", "Drone disconnected.");
-            keep_running = 0;
-        } 
+            if (bytesRead == -1) 
+            {
+                if (errno != EAGAIN) perror("Server: Error reading from Drone Pipe (fifoDBB)");
+                break; // No more data
+            } 
+            else if (bytesRead == 0)  
+            {
+                log_msg("SERVER", "Drone disconnected.");
+                keep_running = 0;
+                break;
+            } 
 
-        if (bytesRead > 0) 
-        {
+            // Process Data
             if (incoming_drone_state.x == -1.0)
             {
                 log_msg("SERVER", "Detected Quit Signal from Drone.");
-                keep_running = 0; // Trigger cleanup
-                continue;
+                keep_running = 0; 
+                break;
             } 
 
             if (incoming_drone_state.x == -2.0) 
@@ -270,7 +270,12 @@ int main()
 
         // CORE LOGIC
         write(fd_NetTX, &world.drone, sizeof(DroneState));
-        read(fd_NetRX, world.obstacles, sizeof(world.obstacles));
+        // Read Remote Obstacles (Non-blocking)
+        ssize_t netBytes = read(fd_NetRX, world.obstacles, sizeof(world.obstacles));
+        if (netBytes == -1 && errno != EAGAIN) 
+        {
+            perror("Server: Error reading from Network RX");
+        }
 
         // TARGETS (Standalone Only)
         if (operation_mode == 0) 
