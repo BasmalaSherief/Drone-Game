@@ -258,6 +258,17 @@ If a user presses 'Q':
 ✅ Watchdog process for fault tolerance.  
 ✅ Physics engine corrections (smooth movement, repulsive forces).
 
+## 🔧 Assignment 1 Corrections (Changelog)
+**Note**: This section details the specific corrections implemented in this version (Assignment 2) to address the feedback received on the Assignment 1 evaluation.
+
+| Evaluation Item | Reported Issue | Correction Implemented |
+|----------------|----------------|------------------------|
+| 1. Solution Correctness | "Drone moves one pos to one pos" (Laggy/Discrete movement) | **Fixed**: Completely rewrote the physics engine in `DroneController.c`. The drone now uses proper Newtonian integration (Force → Acceleration → Velocity → Position) for smooth, fluid movement. |
+| 1. Solution Correctness | "Obstacles too strong... no repulsive the edges" | **Fixed**: Tuned the repulsive force constants to be playable. Implemented a dedicated "Geofence" function that calculates repulsive forces from the window borders, preventing the drone from flying off-screen. |
+| 3. Process Management | "No fork()" | **Fixed**: The system now correctly uses `fork()` and `execvp()` to spawn all child processes (Drone, Keyboard, Generators, Watchdog) via a wrapper function in `Blackboard_functions.c`. |
+| 4. Error Handling | "No systematic debug output... zero errors checking" | **Fixed**: Added robust error checking for all critical system calls (Pipe creation, File opening, Read/Write). Implemented a `log_msg` function that writes detailed debug info to `simulation.log`. |
+| 7. Code Quality | "Doesn't kill well" (Zombie processes) | **Fixed**: Implemented comprehensive Signal Handling (SIGINT, SIGTERM). The Master process now closes all file descriptors and uses `waitpid()` to ensure all children exit cleanly, eliminating zombie processes. |
+
 ### Assignment 3 (Final Release)
 
 ✅ **Network Manager**: TCP socket integration.  
